@@ -38,8 +38,11 @@ export interface Station {
 export interface Line {
   /** Display name, e.g. "IR 35". */
   name: string;
-  /** SBB timetable icon name for the line badge, e.g. "ir-35". */
-  icon: string;
+  /**
+   * SBB timetable icon name for the line badge, e.g. "ir-35". Only set when the
+   * icon is in /public/sbb-icons; without it the badge shows the name as text.
+   */
+  icon?: string;
 }
 
 /** Occupancy levels as used by `sbb-timetable-occupancy`. */
@@ -100,8 +103,10 @@ export interface Connection {
   tradeOff?: string;
   /** Minutes later than the original plan at the destination. */
   delayVsPlanMinutes: number;
+  /** Only true when we actually know it; the backend cannot check tickets, so it sends false. */
   ticketValid: boolean;
-  occupancy: { firstClass?: Occupancy; secondClass: Occupancy };
+  /** Left out when there is no occupancy forecast (the backend has none). */
+  occupancy?: { firstClass?: Occupancy; secondClass: Occupancy };
   /** Where to board, e.g. "front (sector A)". */
   boardingHint?: string;
 }
@@ -109,6 +114,8 @@ export interface Connection {
 /** Result of the scan: what happened and what to do next (screen 3). */
 export interface TripResult {
   trip: Trip;
+  /** False when the planned train is not hit by any disruption: then `best` is the planned train itself. */
+  affected: boolean;
   disruption: Disruption;
   /** Simulated "now" at the kiosk. */
   now: ClockTime;
@@ -175,6 +182,8 @@ export interface ExploreSuggestions {
 /** One wait-time scenario (screens 4, 5 and 5b). */
 export interface WaitScenario {
   level: WaitLevel;
+  /** Simulated "now" at the kiosk (defaults to the demo time 11:05). */
+  now?: ClockTime;
   waitMinutes: number;
   returnPlan: ReturnPlan;
   eat: Idea[];
@@ -226,6 +235,8 @@ export interface PhoneTrip {
   latest: {
     time: ClockTime;
     headline: string;
+    /** Body of the update. When missing, the screen shows the "still platform … head back by …" text. */
+    text?: string;
     platform: string;
     /** New "head back by" time after the update. */
     headBackBy: ClockTime;

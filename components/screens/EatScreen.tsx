@@ -12,7 +12,7 @@ export function EatScreen({ wait, scenario }: { wait: WaitScenario; scenario: Sc
   return (
     <WaitIdeasLayout
       scenario={scenario}
-      time="11:05"
+      time={wait.now ?? '11:05'}
       title={t.wait.eat.title}
       intro={t.eat.intro}
       returnPlan={wait.returnPlan}

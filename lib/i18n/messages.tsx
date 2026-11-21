@@ -71,6 +71,7 @@ const en = {
   },
   result: {
     cancelled: (time: ReactNode) => <>Your train at {time} is cancelled</>,
+    runsAsPlanned: (time: string) => `Your train at ${time} runs as planned`,
     bestLabel: 'Your best next train',
     to: (dest: string) => `to ${dest}`,
     departs: 'departs',
@@ -184,6 +185,7 @@ const de: Messages = {
   },
   result: {
     cancelled: (time) => <>Ihr Zug um {time} fällt aus</>,
+    runsAsPlanned: (time) => `Ihr Zug um ${time} fährt wie geplant`,
     bestLabel: 'Ihr bester nächster Zug',
     to: (dest) => `nach ${dest}`,
     departs: 'Abfahrt',
@@ -295,6 +297,7 @@ const fr: Messages = {
   },
   result: {
     cancelled: (time) => <>Votre train de {time} est supprimé</>,
+    runsAsPlanned: (time) => `Votre train de ${time} circule comme prévu`,
     bestLabel: 'Votre meilleur prochain train',
     to: (dest) => `direction ${dest}`,
     departs: 'départ',
@@ -406,6 +409,7 @@ const it: Messages = {
   },
   result: {
     cancelled: (time) => <>Il treno delle {time} è soppresso</>,
+    runsAsPlanned: (time) => `Il treno delle ${time} circola come previsto`,
     bestLabel: 'Il suo miglior treno successivo',
     to: (dest) => `per ${dest}`,
     departs: 'partenza',

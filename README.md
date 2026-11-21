@@ -2,7 +2,10 @@
 
 Clickable front-end of our station "disruption kiosk": a traveller whose train was cancelled scans their ticket at a portrait touch screen in the station, sees the next train they can take, and gets ideas for what to do while they wait (eat, look around, rest, or a hotel if no train runs tonight). A phone page keeps them updated.
 
-**There is no backend yet.** All data is mock data for one demo scenario: 10 Sep 2026, Zürich HB, traveller going to Chur, IC 3 at 11:07 cancelled because of overhead line damage between Wädenswil and Pfäffikon SZ.
+The front-end runs in two modes:
+
+- **Live** (`BACKEND_URL` set): trip, disruption and train data come from the Python backend in [`backend/`](backend/README.md), built from the real SBB data, for the simulated moment `DEMO_AT` (default 10 Sep 2026 11:05, Zürich HB → Chur). On that day an overhead line fault between Wädenswil and Pfäffikon SZ cancels the 11:07 train; the kiosk proposes the IR 35 at 11:12.
+- **Mock** (no `BACKEND_URL`): the hand-written demo scenario from `docs/SCREENS.md` (IC 3 at 11:07 cancelled, IR 35 at 11:37).
 
 The UI follows `docs/SCREENS.md` (screen spec: wording, layout, demo data) and is built with SBB's official design system **Lyne** (`@sbb-esta/lyne-*` 5.13.3): SBB theme, design tokens, fonts, real SBB icons, logo and station clock.
 
@@ -15,6 +18,30 @@ npm run build      # production build (type-checks too)
 ```
 
 Needs Node 20+. The SBB fonts load from SBB's CDN, so the demo needs internet (without it the font falls back to Helvetica/Arial).
+
+### With the backend (live data)
+
+1. Set up and build the backend database once: see [`backend/README.md`](backend/README.md) (Python 3.12, about 15 min the first time).
+2. Start the backend (from the repo root):
+   ```bash
+   .venv/Scripts/python -m uvicorn sbb_backend.api:app --app-dir backend --port 8000
+   ```
+3. Copy `.env.example` to `.env.local` (it already points to `http://127.0.0.1:8000`), then `npm run dev`.
+
+If the backend cannot be reached, the pages log the error on the server and show the mock data, so a demo never breaks. Set `BACKEND_STRICT=1` in `.env.local` to get an error page instead (use it to check that you really see live data).
+
+What is live and what stays hand-written:
+
+| Screen | Live from the backend | Stays as written |
+|---|---|---|
+| 1 Welcome | Disruptions active near the kiosk station (official ticker text, all 4 languages) | |
+| 2 Scan | Route on the ticket | Ticket scan itself is simulated |
+| 3 Result | Cancelled train, reason and expected end, best next train with platform and arrival, other options | |
+| 4, 5, 5b Wait | The train to be back for, waiting time, "be back by" times | Zürich HB ideas (cafés, places). The idea set follows the real waiting time; ideas that no longer fit are dropped |
+| 5c Rest | `time=day`: same as above | `time=evening` / `night`: imagined later moments, demo data in both modes |
+| 6 Phone | Train, newest official update, ticker history | |
+
+Deliberately not shown with live data, because the data cannot back it up: "Your ticket is valid on this train" and crowding (no ticket or occupancy data).
 
 ## Routes
 
@@ -36,7 +63,7 @@ Kiosk pages are drawn on a fixed **1080 × 1920** portrait canvas that is scaled
 
 | Parameter | Values | Default | Used by |
 |---|---|---|---|
-| `wait` | `short` (S5 11:14, 9 min) · `medium` (IR 35 11:37, 32 min) · `long` (IR 35 12:37, 92 min) | `medium` | screens 4, 5, 5b |
+| `wait` | `short` (S5 11:14, 9 min) · `medium` (IR 35 11:37, 32 min) · `long` (IR 35 12:37, 92 min). Mock mode only: with the backend the real waiting time decides | `medium` | screens 4, 5, 5b |
 | `time` | `day` (11:05) · `evening` (19:40) · `night` (23:40, "No more trains tonight") | `day` | screen 5c |
 
 | `lang` | `en` · `fr` · `de` · `it` | `en` | all kiosk screens and the phone |
@@ -52,7 +79,9 @@ Example: `/kiosk/wait/rest?time=night`, `/kiosk/wait/explore?wait=long&lang=de`.
 - `lib/types.ts`: data types (`Trip`, `Disruption`, `Connection`, `WaitScenario`, `Idea`, `Place`, `RestOption`, `PhoneTrip`, …), shaped like the future API responses.
 - `lib/i18n/messages.tsx`: all UI text in EN · FR · DE · IT (English = `docs/SCREENS.md`; Swiss German without "ß", SBB = CFF/FFS in French/Italian, formal address). Add a text there in all four languages.
 - `lib/mock-data.ts`: **all demo data**, texts in all four languages via `tx(en, de, fr, it)`; `lib/data.ts` returns them in the requested language. Keep `[Hotel name]` / `[price]` as placeholders: we have no hotel data and must not invent any.
-- `lib/data.ts`: async data functions used by the pages. To connect the backend, replace their bodies with API calls; the pages stay as they are.
+- `lib/data.ts`: async data functions used by the pages. Each one uses the backend when `BACKEND_URL` is set, else the mock data.
+- `lib/backend.ts`: server-only client for the Python API and the mapping of its answers to the types in `lib/types.ts`.
+- `backend/`: the Python backend (data import, disruption replay, journey planner, Together AI voice and location). See its README.
 - `public/sbb-icons/`: only the SBB icons we use (copied from the SBB icon set). Add a new icon by copying its SVG from the SBB icons folder; check the exact name first.
 - `public/photos/`: real photos for screen 5b go here (see the README in that folder).
 
@@ -61,8 +90,8 @@ Example: `/kiosk/wait/rest?time=night`, `/kiosk/wait/explore?wait=long&lang=de`.
 - "No ticket? Type your destination" and "Stop updates" are visual only.
 - No QR decoding: the scan screen only shows the webcam and animates.
 
-## Next: backend
+## Backend
 
-The plan (see the project plan) is a Python service for GTFS routing (Connection Scan Algorithm on the 10 Sep 2026 timetable, replaying the disruption) plus Together AI for reading ticker messages and writing the wait ideas. Put the key in `.env.local` as `TOGETHER_API_KEY` (see `.env.example`); it must only be used server-side.
+The Python service in `backend/` does GTFS routing (Connection Scan Algorithm on the real 2026 timetable), replays each disruption as it was known at any moment, and offers Together AI speech-to-text, text-to-speech and location analysis. The Together AI key belongs to the backend only: put it in `backend/.env` as `TOGETHER_API_KEY` (see `backend/.env.example`), never in the front-end.
 
 Brand note: SBB logo, icons and clock are used for this SBB hackathon demo only. Don't publish the demo as if it were a real SBB product.

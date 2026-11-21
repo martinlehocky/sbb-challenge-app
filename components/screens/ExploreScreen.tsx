@@ -13,7 +13,7 @@ export function ExploreScreen({ wait, scenario }: { wait: WaitScenario; scenario
   return (
     <WaitIdeasLayout
       scenario={scenario}
-      time="11:05"
+      time={wait.now ?? '11:05'}
       title={t.wait.explore.title}
       intro={wait.explore.intro}
       returnPlan={wait.returnPlan}

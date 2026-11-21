@@ -1,8 +1,26 @@
 /**
- * Data access for the screens. Today every function returns mock data in the
- * requested language; later they will call the backend (GTFS routing +
- * Together AI) with the same return types, so the pages don't need to change.
+ * Data access for the screens.
+ *
+ * - BACKEND_URL not set: every function returns the mock data (lib/mock-data.ts).
+ * - BACKEND_URL set: trip, disruption and train data come from the Python backend (lib/backend.ts)
+ *   for the simulated moment DEMO_AT. The hand-written Zürich HB ideas (cafés, places, rest spots)
+ *   stay as written; their "back by" times are moved to fit the real train.
+ *   If the backend cannot be reached, the error is logged and the mock data is shown instead,
+ *   unless BACKEND_STRICT=1 (then the page fails, which is what you want when testing).
+ *
+ * Only Server Components import this file, so the backend address never reaches the browser.
  */
+import {
+  backendConfig,
+  clock,
+  fetchAdvice,
+  liveWelcome,
+  phoneTripFromAdvice,
+  shiftTimes,
+  toMinutes,
+  tripResultFromAdvice,
+  type BackendConfig,
+} from './backend';
 import { localize } from './i18n/localize';
 import {
   phoneTrip,
@@ -15,6 +33,7 @@ import type {
   Lang,
   PhoneTrip,
   RestScenario,
+  ReturnPlan,
   TimeOfDay,
   TripResult,
   WaitLevel,
@@ -22,26 +41,147 @@ import type {
   WelcomeInfo,
 } from './types';
 
+/** Runs `live` with the backend when configured; otherwise (or on failure, unless strict) returns `mock()`. */
+async function fromBackend<T>(what: string, live: (cfg: BackendConfig) => Promise<T>, mock: () => T): Promise<T> {
+  const cfg = backendConfig();
+  if (!cfg) return mock();
+  try {
+    return await live(cfg);
+  } catch (err) {
+    if (process.env.BACKEND_STRICT === '1') throw err;
+    console.error(`[backend] ${what} failed, showing mock data instead:`, err);
+    return mock();
+  }
+}
+
+/** Fills the {platform} placeholder used in a few hand-written texts. */
+function fillPlatform<T>(value: T, platform: string): T {
+  return JSON.parse(JSON.stringify(value).replaceAll('{platform}', platform)) as T;
+}
+
+function backByFor(plan: ReturnPlan, deltaMinutes: number): ReturnPlan {
+  return { ...plan, backBy: shiftTimes(plan.backBy, deltaMinutes) };
+}
+
+/**
+ * True if there is time to walk there and still be back by `backBy` ("HH:MM", same day as `now`).
+ * Ideas written for a longer wait are dropped when the real train leaves sooner.
+ */
+function fits(backBy: string, walkMinutes: number, now: string): boolean {
+  return toMinutes(backBy) - toMinutes(now) >= walkMinutes;
+}
+
+/** First "HH:MM" in a text such as "Back by 11:34" (notes like "Rooms free" have none). */
+function timeIn(text: string): string | null {
+  return /\b([01]\d|2[0-3]):[0-5]\d\b/.exec(text)?.[0] ?? null;
+}
+
+/** Wait level that matches the real waiting time, so the ideas fit the time there is. */
+function levelFor(minutes: number): WaitLevel {
+  if (minutes <= 15) return 'short';
+  if (minutes <= 60) return 'medium';
+  return 'long';
+}
+
 export async function getWelcome(lang: Lang): Promise<WelcomeInfo> {
-  return localize<WelcomeInfo>(welcome, lang);
+  return fromBackend('welcome', (cfg) => liveWelcome(cfg, lang), () => localize<WelcomeInfo>(welcome, lang));
 }
 
-/** Later: POST /scan with the decoded ticket QR payload. */
+// Live versions: they throw on any backend problem, so that the calling page falls back as a whole.
+
+async function liveTripResult(cfg: BackendConfig, lang: Lang): Promise<TripResult> {
+  return tripResultFromAdvice(await fetchAdvice(cfg, lang), cfg, lang);
+}
+
+async function liveWaitScenario(cfg: BackendConfig, lang: Lang): Promise<WaitScenario> {
+  const result = await liveTripResult(cfg, lang);
+  const train = result.best.train;
+  const real = levelFor(result.minutesToDeparture);
+  const base = localize<WaitScenario>(waitScenarios[real], lang);
+  const delta = toMinutes(train.departure) - toMinutes(base.returnPlan.train.departure);
+  const now = clock(cfg.at);
+  const scenario: WaitScenario = {
+    ...base,
+    now,
+    waitMinutes: result.minutesToDeparture,
+    returnPlan: backByFor({ ...base.returnPlan, train }, delta),
+    eat: base.eat
+      .map((idea) => ({ ...idea, backBy: shiftTimes(idea.backBy, delta) }))
+      .filter((idea) => fits(idea.backBy, idea.walk.minutes, now)),
+    explore: {
+      ...base.explore,
+      places: base.explore.places
+        .map((p) => ({ ...p, backBy: shiftTimes(p.backBy, delta) }))
+        .filter((p) => fits(p.backBy, p.place.walk.minutes, now)),
+    },
+  };
+  return fillPlatform(scenario, train.platform);
+}
+
+/** Screen 3 (and the ticket shown on screen 2). */
 export async function getTripResult(lang: Lang): Promise<TripResult> {
-  return localize<TripResult>(tripResult, lang);
+  return fromBackend('trip result', (cfg) => liveTripResult(cfg, lang), () => localize<TripResult>(tripResult, lang));
 }
 
-/** Later: GET /activities?trip=…&wait=…&lang=… */
+/**
+ * Screens 4, 5, 5b. In mock mode `level` picks the demo scenario.
+ * With the backend, the train is the real best next train and the level follows the real waiting time
+ * (the `wait` URL switch then has no effect): the ideas of that level are kept, their times are moved
+ * by the difference between the real departure and the demo departure, and ideas that no longer fit are dropped.
+ */
 export async function getWaitScenario(level: WaitLevel, lang: Lang): Promise<WaitScenario> {
-  return localize<WaitScenario>(waitScenarios[level], lang);
+  return fromBackend(
+    'wait scenario',
+    (cfg) => liveWaitScenario(cfg, lang),
+    () => {
+      const scenario = localize<WaitScenario>(waitScenarios[level], lang);
+      return fillPlatform(scenario, scenario.returnPlan.train.platform);
+    },
+  );
 }
 
-/** Later: GET /activities?trip=…&category=rest&now=…&lang=… */
+/**
+ * Screen 5c. "day" uses the real best next train (times moved like on the wait screens).
+ * "evening" and "night" are imagined later moments of the day and stay demo data in both modes.
+ */
 export async function getRestScenario(time: TimeOfDay, lang: Lang): Promise<RestScenario> {
-  return localize<RestScenario>(restScenarios[time], lang);
+  const mock = () => {
+    const scenario = localize<RestScenario>(restScenarios[time], lang);
+    return fillPlatform(scenario, scenario.returnPlan.train.platform);
+  };
+  if (time !== 'day') return mock();
+  return fromBackend(
+    'rest scenario',
+    async (cfg) => {
+      const result = await liveTripResult(cfg, lang);
+      const train = result.best.train;
+      // Same "be back by" as screens 4-5b: it follows the real waiting time, not the 32-minute demo wait.
+      const { returnPlan } = await liveWaitScenario(cfg, lang);
+      const base = localize<RestScenario>(restScenarios.day, lang);
+      const delta = toMinutes(train.departure) - toMinutes(base.returnPlan.train.departure);
+      const now = clock(cfg.at);
+      const scenario: RestScenario = {
+        ...base,
+        now,
+        options: base.options
+          .map((o) => ({ ...o, note: shiftTimes(o.note, delta) }))
+          .filter((o) => {
+            const backBy = timeIn(o.note);
+            return backBy === null || fits(backBy, o.walk.minutes, now);
+          }),
+        returnPlan,
+      };
+      return fillPlatform(scenario, train.platform);
+    },
+    mock,
+  );
 }
 
-/** Later: GET /trip/{id}?lang=… (polled for updates). */
+/** Screen 6. */
 export async function getPhoneTrip(lang: Lang): Promise<PhoneTrip> {
-  return localize<PhoneTrip>(phoneTrip, lang);
+  return fromBackend(
+    'phone trip',
+    async (cfg) => phoneTripFromAdvice(await fetchAdvice(cfg, lang), cfg, lang),
+    () => localize<PhoneTrip>(phoneTrip, lang),
+  );
 }

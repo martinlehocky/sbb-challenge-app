@@ -32,7 +32,7 @@ export const stations = {
   zurichHb: { id: '8503000', name: 'Zürich HB' },
   chur: { id: '8509000', name: 'Chur' },
   waedenswil: { id: '8503206', name: 'Wädenswil' },
-  pfaeffikonSz: { id: '8503314', name: 'Pfäffikon SZ' },
+  pfaeffikonSz: { id: '8503209', name: 'Pfäffikon SZ' },
 } satisfies Record<string, Station>;
 
 export const lines = {
@@ -100,6 +100,7 @@ export const trip: Trip = {
 
 export const tripResult: Localizable<TripResult> = {
   trip,
+  affected: true,
   disruption,
   now: '11:05',
   minutesToDeparture: 32,
@@ -277,11 +278,12 @@ export const waitScenarios: Record<WaitLevel, Localizable<WaitScenario>> = {
           'Boisson ou en-cas à emporter',
           'Bevanda o spuntino da asporto',
         ),
+        // {platform} = platform of the train to be back for (filled in by lib/data.ts)
         location: tx(
-          'Kiosk at the stairs to platform 4',
-          'Kiosk bei der Treppe zu Gleis 4',
-          'Kiosque près de l’escalier de la voie 4',
-          'Chiosco vicino alle scale del binario 4',
+          'Kiosk at the stairs to platform {platform}',
+          'Kiosk bei der Treppe zu Gleis {platform}',
+          'Kiosque près de l’escalier de la voie {platform}',
+          'Chiosco vicino alle scale del binario {platform}',
         ),
         walk: { minutes: 1 },
         backBy: '11:10',
@@ -435,11 +437,12 @@ export const restScenarios: Record<TimeOfDay, Localizable<RestScenario>> = {
           'Posto a sedere con ricarica per il telefono',
         ),
         details: [
+          // {platform} is filled in by lib/data.ts
           tx(
-            'Waiting area near platform 9',
-            'Wartebereich bei Gleis 9',
-            'Zone d’attente près de la voie 9',
-            'Zona d’attesa vicino al binario 9',
+            'Waiting area near platform {platform}',
+            'Wartebereich bei Gleis {platform}',
+            'Zone d’attente près de la voie {platform}',
+            'Zona d’attesa vicino al binario {platform}',
           ),
         ],
         walk: { minutes: 1 },

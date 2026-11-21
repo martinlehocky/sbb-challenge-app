@@ -24,7 +24,7 @@ export function WaitScreen({ wait, scenario }: { wait: WaitScenario; scenario: S
   return (
     <KioskFrame lang={scenario.lang}>
       <KioskHeader
-        time="11:05"
+        time={wait.now ?? '11:05'}
         start={
           <NavButton
             href={withScenario('/kiosk/result', scenario)}

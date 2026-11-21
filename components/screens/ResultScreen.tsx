@@ -35,12 +35,20 @@ export function ResultScreen({ result, scenario }: { result: TripResult; scenari
         center={`${trip.ticket.from.name} → ${trip.ticket.to.name}`}
       />
       <KioskMain>
-        <SbbNotification type="error" readOnly animation="none" className={styles.cancelled}>
-          <SbbTitle level="1" visualLevel="4" className={styles.cancelledTitle}>
-            <LineBadge line={planned.line} size="s" /> {t.result.cancelled(<s>{planned.departure}</s>)}
-          </SbbTitle>
-          {result.disruption.reason}
-        </SbbNotification>
+        {result.affected ? (
+          <SbbNotification type="error" readOnly animation="none" className={styles.cancelled}>
+            <SbbTitle level="1" visualLevel="4" className={styles.cancelledTitle}>
+              <LineBadge line={planned.line} size="s" /> {t.result.cancelled(<s>{planned.departure}</s>)}
+            </SbbTitle>
+            {result.disruption.reason}
+          </SbbNotification>
+        ) : (
+          <SbbNotification type="success" readOnly animation="none" className={styles.cancelled}>
+            <SbbTitle level="1" visualLevel="4" className={styles.cancelledTitle}>
+              <LineBadge line={planned.line} size="s" /> {t.result.runsAsPlanned(planned.departure)}
+            </SbbTitle>
+          </SbbNotification>
+        )}
 
         <section className={styles.section} aria-labelledby="best-train">
           <h2 id="best-train" className={styles.label}>
@@ -52,7 +60,7 @@ export function ResultScreen({ result, scenario }: { result: TripResult; scenari
                 <LineBadge line={best.train.line} size="l" />
                 <span className={styles.to}>
                   {t.result.to(best.train.direction ?? best.arrivalStation.name)}
-                  <SbbTimetableOccupancy secondClassOccupancy={best.occupancy.secondClass} />
+                  {best.occupancy && <SbbTimetableOccupancy secondClassOccupancy={best.occupancy.secondClass} />}
                 </span>
               </div>
               <div className={styles.bestDeparture}>
@@ -84,7 +92,7 @@ export function ResultScreen({ result, scenario }: { result: TripResult; scenari
                 {best.ticketValid && t.result.ticketValid}
               </span>
             </p>
-            {best.occupancy.secondClass === 'high' && (
+            {best.occupancy?.secondClass === 'high' && (
               <p className={styles.fact}>
                 <SbbIcon name="user-group-small" />
                 <span>

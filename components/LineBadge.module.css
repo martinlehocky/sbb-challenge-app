@@ -15,3 +15,36 @@
 .l {
   --sbb-icon-svg-height: 2.5rem;
 }
+
+/* Text badge for lines without a local icon: same look as the SBB line pictograms (black frame, bold). */
+.text {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  vertical-align: middle;
+  padding-inline: 0.35em;
+  border: 0.1em solid var(--sbb-color-black);
+  border-radius: 0.2em;
+  background: var(--sbb-color-white);
+  color: var(--sbb-color-black);
+  font-weight: bold;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.text-s {
+  height: 1.25rem;
+  font-size: 0.875rem;
+}
+
+.text-m {
+  height: 1.75rem;
+  font-size: 1.125rem;
+}
+
+.text-l {
+  height: 2.5rem;
+  font-size: 1.625rem;
+}

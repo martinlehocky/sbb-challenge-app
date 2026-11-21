@@ -45,7 +45,9 @@ export function PhoneScreen({ trip, scenario }: { trip: PhoneTrip; scenario: Sce
             <SbbIcon slot="icon" name="bell-small" />
             <span className={styles.updateLabel}>{t.phone.newUpdate(latest.time)}</span>
             <strong className={styles.updateHeadline}>{latest.headline}</strong>
-            <span className={styles.updateText}>{t.phone.updateText(latest.platform, latest.headBackBy)}</span>
+            <span className={styles.updateText}>
+              {latest.text ?? t.phone.updateText(latest.platform, latest.headBackBy)}
+            </span>
           </SbbNotification>
         </div>
 
