@@ -40,6 +40,9 @@ def is_prompt_echo(transcript: str) -> bool:
 
 # Languages the kiosk speaks (ISO codes and the names some speech models report instead).
 KIOSK_LANGUAGES = {"en", "de", "fr", "it", "english", "german", "french", "italian"}
+# Whisper often labels short English clips as Welsh; re-transcribing those in the screen language
+# would translate the English question (into French, for example), so they are retried in English.
+MISDETECTED_AS = {"cy": "en", "welsh": "en"}
 # Vocabulary hint for speech recognition, so short Swiss names ("Chur", "Thun") are not misheard.
 # Only names, no sentence: an English sentence here makes Whisper translate Italian or French speech into English.
 STT_PROMPT = (
@@ -310,8 +313,9 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
                    "detected_language": detected, "retried_in": None, "audio_bytes": len(audio),
                    "content_type": file.content_type}
             if detected is not None and detected.lower() not in KIOSK_LANGUAGES:
-                transcript = await run_in_threadpool(s.ai.transcribe, audio, name, file.content_type, lang, hint)
-                stt["retried_in"] = lang
+                retry = MISDETECTED_AS.get(detected.lower(), lang)
+                transcript = await run_in_threadpool(s.ai.transcribe, audio, name, file.content_type, retry, hint)
+                stt["retried_in"] = retry
         except AIError as exc:
             raise ai_http_error(exc) from exc
         stt["ms"] = round((time.perf_counter() - t0) * 1000)
@@ -321,11 +325,12 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
         return transcript.strip(), stt
 
     def answer_question(question: str, station: str, at: str | None, lang: str, destination: str | None,
-                        extra_facts: list[str]) -> dict:
+                        extra_facts: list[str], spoken_lang: str | None = None) -> dict:
         s = svc()
         kiosk = station_or_404(station)
         dest = station_or_404(destination) if destination else None
-        return s.assistant.answer(question, kiosk, when(at), lang=lang, destination=dest, extra_facts=extra_facts)
+        return s.assistant.answer(question, kiosk, when(at), lang=lang, destination=dest, extra_facts=extra_facts,
+                                  spoken_lang=spoken_lang)
 
     @app.post("/api/v1/question", tags=["assistant"])
     def question(req: QuestionRequest) -> dict:
@@ -346,7 +351,9 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
             facts = [str(f) for f in facts][:40] if isinstance(facts, list) else []
         except ValueError:
             facts = []
-        out = await run_in_threadpool(answer_question, transcript, station, at, lang, destination, facts)
+        # The language Whisper heard (or the screen language it re-transcribed in) is the answer language.
+        spoken = stt.get("retried_in") or stt.get("detected_language")
+        out = await run_in_threadpool(answer_question, transcript, station, at, lang, destination, facts, spoken)
         out["debug"] = {"speech_to_text": stt, **out.get("debug", {})}
         return out
 

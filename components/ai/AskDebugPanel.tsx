@@ -1,6 +1,6 @@
 'use client';
 
-import type { QuestionDebug } from '@/lib/ai';
+import type { QuestionDebug, StationMatchDebug } from '@/lib/ai';
 import styles from './AskDebugPanel.module.css';
 
 export interface RecordingInfo {
@@ -23,6 +23,16 @@ export interface AskDebugState {
   roundTripMs?: number;
   httpStatus?: number;
   clientError?: string;
+}
+
+/** "Biel" → Biel/Bienne (busiest), or the choices when it is ambiguous. */
+function matchText(m: StationMatchDebug) {
+  const target = m.station ?? (m.choices.length ? m.choices.join(' / ') : 'nothing');
+  return (
+    <>
+      “{m.said}” → <b>{target}</b> ({m.how})
+    </>
+  );
 }
 
 const val = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
@@ -92,10 +102,21 @@ export function AskDebugPanel({
             <div className={styles.row}>
               <span className={styles.key}>Trip in question</span>
               <span className={styles.value}>
-                {last.server.trip_intent.raw
-                  ? <>AI read destination <b>{val(last.server.trip_intent.raw.destination)}</b> (origin {val(last.server.trip_intent.raw.origin)})</>
-                  : 'no AI answer'}{' '}
-                → matched <b>{val(last.server.trip_intent.destination)}</b> · {last.server.trip_intent.method}
+                {last.server.trip_intent.origin && (
+                  <>
+                    from {matchText(last.server.trip_intent.origin)}
+                    {' · '}
+                  </>
+                )}
+                {(last.server.trip_intent.destinations ?? []).length
+                  ? (last.server.trip_intent.destinations ?? []).map((d, i) => (
+                      <span key={i}>
+                        {i > 0 && ' · '}to {matchText(d)}
+                      </span>
+                    ))
+                  : 'no place named'}
+                {' · '}
+                {last.server.trip_intent.method} → <b>{val(last.server.trip_plan)}</b>
               </span>
             </div>
           )}
@@ -115,7 +136,11 @@ export function AskDebugPanel({
             <div className={styles.row}>
               <span className={styles.key}>AI answer</span>
               <span className={styles.value}>
-                {last.server.ai_raw && <>answered <b>{val(last.server.ai_raw.answered)}</b> · </>}
+                {last.server.ai_raw && (
+                  <>
+                    answered <b>{val(last.server.ai_raw.answered)}</b> · language <b>{val(last.server.ai_raw.language)}</b> ·{' '}
+                  </>
+                )}
                 {last.server.rejected && <><b>rejected</b>: {last.server.rejected} · </>}
                 {last.server.error && <><b>error</b>: {last.server.error} · </>}
                 {val(last.server.ms)} ms · {val(last.server.model)}

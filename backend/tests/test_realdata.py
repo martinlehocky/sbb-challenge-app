@@ -89,3 +89,29 @@ def test_ice_in_ic3_slot_is_caught(client):
     assert r["status"] == "affected"
     assert r["planned"]["departure"].startswith("2026-09-10T11:07")
     assert r["alternatives"][0]["departure"] > "2026-09-10T11:07"
+
+
+@pytest.mark.parametrize("said, how, name", [
+    ("Bern", "exact", "Bern"),
+    ("Lucerne", "exact", "Luzern"),        # name in another language
+    ("Zürich", "exact", "Zürich HB"),
+    ("Saint-Maurice", "exact", "St-Maurice"),
+    ("Biel", "exact", "Biel/Bienne"),
+    ("Wil", "only", "Wil SG"),              # whole word, not "Wila"
+    ("Milano", "exact", "Milano Centrale"),
+    ("Interlaken", "ambiguous", None),      # West or Ost: the kiosk asks
+    ("Atlantis", "none", None),
+    ("Thoune", "exact", "Thun"),
+])
+def test_station_match_real_names(client, said, how, name):
+    m = client.app.state.services.stations.match(said)
+    assert m["how"] == how
+    assert (m["station"].name if m["station"] else None) == name
+
+
+def test_every_exonym_points_to_a_real_station(client):
+    from sbb_backend.services.stations import EXONYMS
+    stations = client.app.state.services.stations
+    for said, official in EXONYMS.items():
+        hit = stations.match(official)
+        assert hit["station"] is not None and hit["station"].name == official, said

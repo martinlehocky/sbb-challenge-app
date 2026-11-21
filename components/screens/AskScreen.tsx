@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { QuestionDebug } from '@/lib/ai';
 import { getMessages } from '@/lib/i18n/messages';
 import { withScenario } from '@/lib/scenario';
-import type { Scenario } from '@/lib/types';
+import type { Lang, Scenario } from '@/lib/types';
 import { AiChip } from '../ai/AiChip';
 import { AiWorking } from '../ai/AiWorking';
 import { AskDebugPanel, type AskDebugState } from '../ai/AskDebugPanel';
@@ -26,7 +26,10 @@ interface QuestionResponse {
   question: string;
   answer: string | null;
   answered: boolean;
+  answerLang?: Lang;
   tripDestination: { id: string; name: string } | null;
+  clarify?: boolean;
+  choices?: { id: string; name: string }[];
   debug?: QuestionDebug;
 }
 
@@ -34,7 +37,16 @@ type Phase =
   | { kind: 'idle' }
   | { kind: 'listening' }
   | { kind: 'thinking' }
-  | { kind: 'answer'; question: string; answer: string; answered: boolean; trip: { id: string; name: string } | null }
+  | {
+      kind: 'answer';
+      question: string;
+      answer: string;
+      answered: boolean;
+      answerLang: Lang;
+      trip: { id: string; name: string } | null;
+      /** The kiosk asks back ("Which one do you mean?") with one button per station. */
+      choices: { id: string; name: string }[];
+    }
   | { kind: 'problem'; message: string };
 
 function extensionFor(mime: string): string {
@@ -149,7 +161,9 @@ export function AskScreen({
         question: data.question,
         answer: data.answer,
         answered: data.answered,
-        trip: aboutTrip ? null : data.tripDestination,
+        answerLang: data.answerLang ?? scenario.lang,
+        trip: data.tripDestination,
+        choices: data.clarify ? (data.choices ?? []) : [],
       });
     } catch (err) {
       console.error('[ask] failed:', err);
@@ -306,20 +320,27 @@ export function AskScreen({
             </div>
             <p className={styles.transcript}>“{phase.question}”</p>
             <span className={styles.label}>{t.ask.answer}</span>
-            {phase.answered ? (
-              <p className={styles.answer}>{phase.answer}</p>
+            {phase.answered || phase.choices.length > 0 ? (
+              <p className={styles.answer} lang={phase.answerLang}>
+                {phase.answer}
+              </p>
             ) : (
-              <SbbNotification type="info" readOnly animation="none" className={styles.cantAnswer}>
+              <SbbNotification type="info" readOnly animation="none" className={styles.cantAnswer} lang={phase.answerLang}>
                 {phase.answer}
               </SbbNotification>
             )}
             <div className={styles.actions}>
+              {phase.choices.map((c) => (
+                <NavButton key={c.id} href={withScenario('/kiosk/result', { ...scenario, to: c.id })} iconName="train-small">
+                  {c.name}
+                </NavButton>
+              ))}
               {phase.trip && (
                 <NavButton href={withScenario('/kiosk/result', { ...scenario, to: phase.trip.id })}>
                   {t.ask.showTrain} · {phase.trip.name}
                 </NavButton>
               )}
-              {aboutTrip && (
+              {aboutTrip && phase.choices.length === 0 && (
                 <NavButton href={withScenario('/kiosk/result', scenario)} variant={phase.trip ? 'secondary' : 'primary'}>
                   {t.ask.backToTrip}
                 </NavButton>

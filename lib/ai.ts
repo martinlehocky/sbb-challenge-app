@@ -166,17 +166,29 @@ export interface QuestionDebug {
     ms: number;
   };
   trip_intent?: {
-    raw: { origin: string | null; destination: string | null; language: string | null } | null;
+    raw: { origin: string | null; destinations?: string[]; language: string | null } | null;
     method: string;
     destination: string | null;
+    origin?: StationMatchDebug | null;
+    destinations?: StationMatchDebug[];
   };
+  /** How the backend used the trip: none, ticket, trip, elsewhere (other start), same, several/which (asks back). */
+  trip_plan?: string;
   facts?: string[];
-  ai_raw?: { answer?: string; answered?: boolean } | null;
+  ai_raw?: { answer?: string; answered?: boolean; language?: string } | null;
   rejected?: string;
   error?: string;
   ms?: number;
   model?: string;
   server_ms?: number;
+}
+
+/** One place named in a question and the station(s) it matched (exact, only, busiest, ambiguous, none). */
+export interface StationMatchDebug {
+  said: string;
+  how: string;
+  station: string | null;
+  choices: string[];
 }
 
 export interface QuestionResult {
@@ -185,8 +197,14 @@ export interface QuestionResult {
   answer: string | null;
   /** false: the facts did not contain the answer, or the answer was rejected (then `answer` points to staff). */
   answered: boolean;
+  /** Language of the answer: the language the question was asked in (else the screen language). */
+  answerLang: Lang;
   /** Set when the question was a trip ("I need to get to Bern"): offer "Show my next train". */
   tripDestination: { id: string; name: string } | null;
+  /** The question was unclear (two destinations, a name that fits several stations): the answer asks back. */
+  clarify: boolean;
+  /** With `clarify`: the stations to choose from (each opens that trip). */
+  choices: { id: string; name: string }[];
   debug: QuestionDebug;
 }
 
@@ -194,7 +212,10 @@ interface ApiQuestion {
   question: string;
   answer: string | null;
   answered: boolean;
+  answer_lang?: string;
   trip_destination: { id: number; name: string } | null;
+  clarify?: boolean;
+  choices?: { id: number; name: string }[];
   debug?: QuestionDebug;
   error?: string;
 }
@@ -221,14 +242,20 @@ function stationTips(cfg: BackendConfig, lang: Lang): string[] {
   return [...tips.values()].map((tip) => tip.replaceAll('{platform}', "your train's platform"));
 }
 
-function toQuestionResult(data: ApiQuestion, lang: Lang): QuestionResult {
+const LANGS: readonly Lang[] = ['en', 'de', 'fr', 'it'];
+
+function toQuestionResult(data: ApiQuestion, screenLang: Lang): QuestionResult {
+  const lang = LANGS.find((l) => l === data.answer_lang) ?? screenLang;
   return {
     question: data.question,
     answer: data.answer ? swiss(data.answer, lang) : null,
     answered: data.answered,
+    answerLang: lang,
     tripDestination: data.trip_destination
       ? { id: String(data.trip_destination.id), name: data.trip_destination.name }
       : null,
+    clarify: Boolean(data.clarify),
+    choices: (data.choices ?? []).map((c) => ({ id: String(c.id), name: c.name })),
     debug: { ...data.debug, ...(data.error ? { error: data.error } : {}) },
   };
 }
