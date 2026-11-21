@@ -86,15 +86,17 @@ export async function aiStatus(): Promise<AiStatus> {
 export async function aiSummary(lang: Lang, destination?: string): Promise<string> {
   const cfg = config();
   const dest = destination ?? cfg.destination;
-  const advice = await cached(`summary ${lang} ${dest} ${cfg.at}`, () =>
-    request<{ ai_message?: string | null; ai_error?: string; message: string }>(
+  // Throwing inside the cached loader keeps failures out of the cache (a network blip must not stick for 10 min).
+  const message = await cached(`summary ${lang} ${dest} ${cfg.at}`, async () => {
+    const advice = await request<{ ai_message?: string | null; ai_error?: string; message: string }>(
       cfg,
       '/advice',
       json({ origin: cfg.kioskStation, destination: dest, at: cfg.at, lang, alternatives: 3, ai_message: true }),
-    ),
-  );
-  if (!advice.ai_message) throw new Error(advice.ai_error || 'The AI gave no summary');
-  return swiss(advice.ai_message, lang);
+    );
+    if (!advice.ai_message) throw new Error(advice.ai_error || 'The AI gave no summary');
+    return advice.ai_message;
+  });
+  return swiss(message, lang);
 }
 
 // ---------------------------------------------------------------- ideas for the wait
@@ -139,7 +141,10 @@ async function loadIdeas(interest: Interest, lang: Lang, waitMinutes: number): P
       }),
     ),
   );
-  if (data.suggestions_error && !data.suggestions?.length) throw new Error(data.suggestions_error);
+  if (data.suggestions_error && !data.suggestions?.length) {
+    cache.delete(`ideas ${interest} ${lang} ${waitMinutes} ${cfg.kioskStation} ${cfg.at}`); // retry next time
+    throw new Error(data.suggestions_error);
+  }
   return (data.suggestions ?? [])
     .filter((s) => !s.category || s.category === interest)
     .map((s) => ({

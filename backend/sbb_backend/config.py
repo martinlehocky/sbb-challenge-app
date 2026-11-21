@@ -69,6 +69,14 @@ class Settings:
     })
     together_timeout_s: float = field(default_factory=lambda: float(_env("TOGETHER_TIMEOUT_S", "60")))
 
+    # Google Places API (New): real places near the station, with photos, for the wait-idea screens. Optional.
+    google_maps_api_key: str | None = field(default_factory=lambda: _env("GOOGLE_MAPS_API_KEY"))
+    google_places_base_url: str = field(default_factory=lambda: _env("GOOGLE_PLACES_BASE_URL", "https://places.googleapis.com/v1"))
+
+    @property
+    def places_enabled(self) -> bool:
+        return bool(self.google_maps_api_key)
+
     @property
     def ai_enabled(self) -> bool:
         return bool(self.together_api_key)

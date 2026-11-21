@@ -93,6 +93,7 @@ Example: `/kiosk/wait/rest?time=night`, `/kiosk/wait/explore?wait=long&lang=de`.
 |---|---|---|
 | `/kiosk/ask` | Answers questions by voice or text (Whisper + Qwen) from facts only: the traveller's journey and alternatives, live disruptions and their messages, and the hand-written station tips. Answers with a time not in the facts are rejected (then: “ask staff”). The answer comes in the language the question was asked in (EN/DE/FR/IT), whatever the screen language. A trip question (“Ich muss nach Genf”) also offers “Show my next train” | Notice: questions not available |
 | Screen 3 | “In plain words”: the advice rewritten for stressed or older travellers, shown as text. “What can I do in X min?” only with 10+ minutes before the back-by time, else “go to your platform”. “Ask about my trip” always | Box hidden |
+| Screens 5 and 5b (Google) | With `GOOGLE_MAPS_API_KEY` in `backend/.env`: up to 3 real places from Google Places that fit the time until the back-by time and are open then, each with its photo on the left, the photographer's name and “Places and photos: Google Maps” | The hand-written ideas below |
 | Screens 5–5c | One AI idea next to two hand-written ones, when it fits the time left; otherwise the third hand-written idea | Three hand-written ideas |
 
 - All AI output is marked “AI-generated” (SBB AI pattern “author”) and shows a working indicator while it loads; AI ideas add “Please check on site”.

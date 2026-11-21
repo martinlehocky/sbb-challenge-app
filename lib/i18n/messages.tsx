@@ -114,6 +114,12 @@ const en = {
   eat: {
     intro: 'All of these are close by. The time to walk back is already counted.',
   },
+  places: {
+    attribution: 'Places and photos: Google Maps',
+    exploreIntro: 'Close to the station. The walk back is already counted.',
+    photoBy: (name: string) => `Photo: ${name}`,
+    stay: (min: number) => `about ${min} min there`,
+  },
   ai: {
     label: 'AI-generated',
     summaryTitle: 'In plain words',
@@ -267,6 +273,12 @@ const de: Messages = {
   eat: {
     intro: 'Alles ganz in der Nähe. Der Rückweg ist schon eingerechnet.',
   },
+  places: {
+    attribution: 'Orte und Fotos: Google Maps',
+    exploreIntro: 'Nahe beim Bahnhof. Der Rückweg ist schon eingerechnet.',
+    photoBy: (name: string) => `Foto: ${name}`,
+    stay: (min: number) => `etwa ${min} Min. vor Ort`,
+  },
   ai: {
     label: 'KI-generiert',
     summaryTitle: 'Einfach erklärt',
@@ -418,6 +430,12 @@ const fr: Messages = {
   eat: {
     intro: 'Tout est à proximité. Le temps du retour est déjà compté.',
   },
+  places: {
+    attribution: `Lieux et photos${NB}: Google Maps`,
+    exploreIntro: 'Près de la gare. Le temps du retour est déjà compté.',
+    photoBy: (name: string) => `Photo${NB}: ${name}`,
+    stay: (min: number) => `environ ${min}${NB}min sur place`,
+  },
   ai: {
     label: 'Généré par IA',
     summaryTitle: 'En termes simples',
@@ -568,6 +586,12 @@ const it: Messages = {
   },
   eat: {
     intro: 'Tutto è vicino. Il tempo per tornare è già calcolato.',
+  },
+  places: {
+    attribution: 'Luoghi e foto: Google Maps',
+    exploreIntro: 'Vicino alla stazione. Il tempo per tornare è già calcolato.',
+    photoBy: (name: string) => `Foto: ${name}`,
+    stay: (min: number) => `circa ${min} min sul posto`,
   },
   ai: {
     label: 'Generato con IA',

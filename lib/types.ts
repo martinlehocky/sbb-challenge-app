@@ -167,6 +167,24 @@ export interface Idea {
   backBy: ClockTime;
 }
 
+/** A real place near the station from Google Places (screens 5 and 5b). */
+export interface NearbyPlace {
+  id: string;
+  name: string;
+  /** Kind of place in the screen language, e.g. "Café", "Museum". */
+  typeLabel: string | null;
+  address: string | null;
+  rating: number | null;
+  ratingCount: number | null;
+  /** One way, at an unhurried pace. */
+  walkMinutes: number;
+  /** Typical time spent there (used to check it fits the wait). */
+  stayMinutes: number;
+  mapsUri: string | null;
+  /** Served by Google; must be shown with its author. */
+  photo: { url: string; author: string | null } | null;
+}
+
 export interface Photo {
   /** Path below /public, e.g. "/photos/swiss-national-museum.jpg". Empty until a real photo is added. */
   src?: string;

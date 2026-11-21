@@ -2,10 +2,11 @@
 
 import { formatWalk, minutesBetween } from '@/lib/format';
 import { getMessages } from '@/lib/i18n/messages';
-import type { PlaceSuggestion, Scenario, WaitScenario } from '@/lib/types';
+import type { NearbyPlace, PlaceSuggestion, Scenario, WaitScenario } from '@/lib/types';
 import { AiIdeas } from '../ai/AiIdeas';
 import { IdeaCard } from '../IdeaCard';
 import { LittleTimeNotice } from '../LittleTimeNotice';
+import { GoogleAttribution, PlaceCard } from '../PlaceCard';
 import { PhotoBox } from '../PhotoBox';
 import { WaitIdeasLayout } from '../WaitIdeasLayout';
 
@@ -18,10 +19,13 @@ export function ExploreScreen({
   wait,
   scenario,
   aiEnabled = false,
+  googlePlaces = null,
 }: {
   wait: WaitScenario;
   scenario: Scenario;
   aiEnabled?: boolean;
+  /** Real places from Google that fit the wait; null/empty = the hand-written ideas (+ AI idea). */
+  googlePlaces?: NearbyPlace[] | null;
 }) {
   const t = getMessages(scenario.lang);
   const card = ({ place, backBy }: PlaceSuggestion) => (
@@ -42,22 +46,31 @@ export function ExploreScreen({
       scenario={scenario}
       time={wait.now ?? '11:05'}
       title={t.wait.explore.title}
-      intro={wait.explore.intro}
+      intro={googlePlaces?.length ? t.places.exploreIntro : wait.explore.intro}
       returnPlan={wait.returnPlan}
     >
-      {shown.map(card)}
-      {places.length === 0 && (
-        <LittleTimeNotice text={t.wait.littleTime(wait.returnPlan.train.platform)} />
-      )}
-      {aiEnabled && (
-        <AiIdeas
-          interest="explore"
-          lang={scenario.lang}
-          minutes={wait.now ? minutesBetween(wait.now, wait.returnPlan.backBy) : wait.waitMinutes}
-          backBy={wait.returnPlan.backBy}
-          slots={3 - shown.length}
-          fallback={places.slice(shown.length).map(card)}
-        />
+      {googlePlaces && googlePlaces.length > 0 ? (
+        <>
+          {googlePlaces.map((p) => (
+            <PlaceCard key={p.id} place={p} backBy={wait.returnPlan.backBy} t={t} lang={scenario.lang} />
+          ))}
+          <GoogleAttribution t={t} />
+        </>
+      ) : (
+        <>
+          {shown.map(card)}
+          {places.length === 0 && <LittleTimeNotice text={t.wait.littleTime(wait.returnPlan.train.platform)} />}
+          {aiEnabled && (
+            <AiIdeas
+              interest="explore"
+              lang={scenario.lang}
+              minutes={wait.now ? minutesBetween(wait.now, wait.returnPlan.backBy) : wait.waitMinutes}
+              backBy={wait.returnPlan.backBy}
+              slots={3 - shown.length}
+              fallback={places.slice(shown.length).map(card)}
+            />
+          )}
+        </>
       )}
     </WaitIdeasLayout>
   );

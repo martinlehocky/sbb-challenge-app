@@ -26,6 +26,7 @@ from .services.disruptions import DisruptionStore
 from .services.location import LocationService
 from .services.planner import Planner
 from .services.stations import Station, StationIndex
+from .services.places import PlacesError, PlacesService
 from .services.voice import understand_trip
 from .timeutil import parse_query_time, to_iso
 
@@ -64,9 +65,11 @@ class Services:
     location: LocationService
     ai: TogetherClient
     assistant: Assistant
+    places: PlacesService
 
 
-def build_services(settings: Settings, ai_transport: httpx.BaseTransport | None = None) -> Services:
+def build_services(settings: Settings, ai_transport: httpx.BaseTransport | None = None,
+                   places_transport: httpx.BaseTransport | None = None) -> Services:
     conn = connect(settings.db_path, readonly=True)
     meta = {r["key"]: r["value"] for r in conn.execute("SELECT key, value FROM meta")}
     stations = StationIndex(conn)
@@ -76,7 +79,8 @@ def build_services(settings: Settings, ai_transport: httpx.BaseTransport | None 
     advisor = Advisor(stations, disruptions, planner, ai, settings.disruption_radius_m)
     location = LocationService(stations, disruptions, ai)
     assistant = Assistant(stations, disruptions, advisor, ai)
-    return Services(settings, meta, stations, disruptions, planner, advisor, location, ai, assistant)
+    places = PlacesService(settings, transport=places_transport)
+    return Services(settings, meta, stations, disruptions, planner, advisor, location, ai, assistant, places)
 
 
 # ---------------------------------------------------------------------------- request bodies
@@ -114,6 +118,15 @@ class QuestionRequest(BaseModel):
                                    description="More facts the kiosk knows (e.g. hand-written station tips)")
 
 
+class PlacesRequest(BaseModel):
+    station: str = Field(..., description="Kiosk station (id or name)")
+    at: str | None = None
+    wait_minutes: int = Field(..., ge=1, le=600, description="Minutes until the traveller must be back")
+    interest: Literal["eat", "explore", "rest"] = "eat"
+    lang: Lang = "en"
+    limit: int = Field(3, ge=1, le=6)
+
+
 class SpeakRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=4000)
     lang: Lang = "en"
@@ -123,14 +136,16 @@ class SpeakRequest(BaseModel):
 
 # ---------------------------------------------------------------------------- app
 
-def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTransport | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTransport | None = None,
+               places_transport: httpx.BaseTransport | None = None) -> FastAPI:
     settings = settings or get_settings()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        app.state.services = build_services(settings, ai_transport)
+        app.state.services = build_services(settings, ai_transport, places_transport)
         yield
         app.state.services.ai.close()
+        app.state.services.places.close()
 
     app = FastAPI(title="SBB disruption assistant API", version=__version__, lifespan=lifespan)
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -165,6 +180,7 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
             "database": {k: v for k, v in s.meta.items() if k != "data_dir"},
             "database_built_at": to_iso(int(s.meta["built_at"])) if s.meta.get("built_at") else None,
             "ai_enabled": s.ai.enabled,
+            "places_enabled": s.places.enabled,
             "ai_models": {
                 "chat": settings.together_chat_model,
                 "speech_to_text": settings.together_stt_model,
@@ -253,6 +269,21 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
                                     ai_message=req.ai_message)
 
     # -------------------------------------------------------------- location
+
+    @app.post("/api/v1/places/nearby", tags=["location"])
+    def places_nearby(req: PlacesRequest) -> dict:
+        """Real places near the station (Google Places) that fit the waiting time, each with one photo."""
+        s = svc()
+        if not s.places.enabled:
+            raise HTTPException(503, "GOOGLE_MAPS_API_KEY is not set, so Google places are off")
+        kiosk = station_or_404(req.station)
+        try:
+            out = s.places.nearby(kiosk, when(req.at), req.interest, req.wait_minutes, req.lang, req.limit)
+        except PlacesError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(502, f"Google Places not reachable: {exc}") from exc
+        return {**out, "source": "google", "attribution": "Google Maps"}
 
     @app.post("/api/v1/location/analyze", tags=["location"])
     def analyze_location(req: LocationRequest) -> dict:

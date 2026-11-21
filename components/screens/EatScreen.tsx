@@ -2,10 +2,11 @@
 
 import { formatWalk, minutesBetween } from '@/lib/format';
 import { getMessages } from '@/lib/i18n/messages';
-import type { Idea, Scenario, WaitScenario } from '@/lib/types';
+import type { NearbyPlace, Idea, Scenario, WaitScenario } from '@/lib/types';
 import { AiIdeas } from '../ai/AiIdeas';
 import { IdeaCard } from '../IdeaCard';
 import { LittleTimeNotice } from '../LittleTimeNotice';
+import { GoogleAttribution, PlaceCard } from '../PlaceCard';
 import { WaitIdeasLayout } from '../WaitIdeasLayout';
 
 /** Screen 5 · Ideas for your wait: eat or drink. */
@@ -17,10 +18,13 @@ export function EatScreen({
   wait,
   scenario,
   aiEnabled = false,
+  googlePlaces = null,
 }: {
   wait: WaitScenario;
   scenario: Scenario;
   aiEnabled?: boolean;
+  /** Real places from Google that fit the wait; null/empty = the hand-written ideas (+ AI idea). */
+  googlePlaces?: NearbyPlace[] | null;
 }) {
   const t = getMessages(scenario.lang);
   const card = (idea: Idea) => (
@@ -41,19 +45,28 @@ export function EatScreen({
       intro={t.eat.intro}
       returnPlan={wait.returnPlan}
     >
-      {shown.map(card)}
-      {wait.eat.length === 0 && (
-        <LittleTimeNotice text={t.wait.littleTime(wait.returnPlan.train.platform)} />
-      )}
-      {aiEnabled && (
-        <AiIdeas
-          interest="eat"
-          lang={scenario.lang}
-          minutes={wait.now ? minutesBetween(wait.now, wait.returnPlan.backBy) : wait.waitMinutes}
-          backBy={wait.returnPlan.backBy}
-          slots={3 - shown.length}
-          fallback={wait.eat.slice(shown.length).map(card)}
-        />
+      {googlePlaces && googlePlaces.length > 0 ? (
+        <>
+          {googlePlaces.map((p) => (
+            <PlaceCard key={p.id} place={p} backBy={wait.returnPlan.backBy} t={t} lang={scenario.lang} />
+          ))}
+          <GoogleAttribution t={t} />
+        </>
+      ) : (
+        <>
+          {shown.map(card)}
+          {wait.eat.length === 0 && <LittleTimeNotice text={t.wait.littleTime(wait.returnPlan.train.platform)} />}
+          {aiEnabled && (
+            <AiIdeas
+              interest="eat"
+              lang={scenario.lang}
+              minutes={wait.now ? minutesBetween(wait.now, wait.returnPlan.backBy) : wait.waitMinutes}
+              backBy={wait.returnPlan.backBy}
+              slots={3 - shown.length}
+              fallback={wait.eat.slice(shown.length).map(card)}
+            />
+          )}
+        </>
       )}
     </WaitIdeasLayout>
   );
