@@ -10,6 +10,7 @@ Everything is evaluated "as of" a timestamp: only versions published at or befor
 from __future__ import annotations
 
 import bisect
+import re
 import sqlite3
 from dataclasses import dataclass, field
 
@@ -24,6 +25,7 @@ STALE_AFTER_END_S = 6 * 3600      # expected end passed 6 h ago without news -> 
 KULT_LINK_WINDOW_S = 2 * 3600
 KULT_LINK_RADIUS_M = 5000
 LONG_SEGMENT_CORRIDOR = 0.15      # corridor = 15 % of the stop-to-stop distance, for lines VIA names
+LONG_DISTANCE = ("IC", "IR", "EC", "ICE", "EN", "TGV", "RJX", "RJ", "NJ")  # categories / line prefixes
 
 END_KIND = {
     "UNTIL": "until",
@@ -94,14 +96,29 @@ class Zone:
     lines: list[str]                            # affected lines, upper-case ("IC6", "S1"); empty = unknown
     source: str                                 # "via" (structured) or "text" (names found in the summary)
 
-    def on_segment(self, a: Station, b: Station, line: str | None, radius_m: float) -> bool:
+    def matches_line(self, line: str | None, category: str | None = None) -> bool:
+        """Is a train with this timetable line name (and category) one of the lines VIA lists?
+
+        VIA names Swiss line numbers ("IC3"). The timetable names some long-distance trains only by brand
+        ("ICE", "EC", "TGV" + a code), e.g. ICE 275 Zürich HB 11:07 - Chur runs in the IC3 slot. Such a
+        brand-only train counts as matching when VIA lists at least one long-distance line.
+        """
+        name = (line or "").upper().replace(" ", "")
+        if name in self.lines:
+            return True
+        cat = (category or "").upper()
+        brand_only = cat in LONG_DISTANCE and not re.match(r"^[A-Z]+\d", name)
+        return brand_only and any(listed.startswith(LONG_DISTANCE) for listed in self.lines)
+
+    def on_segment(self, a: Station, b: Station, line: str | None, radius_m: float,
+                   category: str | None = None) -> bool:
         """Does a train running from a to b (on `line`) pass through this zone?
 
         Between two stops we only know the straight line, while real track curves. A non-stop run can be
         long (Zürich HB - Sargans is 78 km and passes 10 km from that straight line at Wädenswil). So when
         VIA names the train's line, the corridor grows with the segment length; otherwise it stays tight.
         """
-        line_matched = bool(self.lines) and (line or "").upper().replace(" ", "") in self.lines
+        line_matched = bool(self.lines) and self.matches_line(line, category)
         if self.lines and not line_matched:
             return False
         if a.lat is None or b.lat is None:
@@ -153,13 +170,14 @@ class DisruptionState:
     def active(self) -> bool:
         return self.status == "active"
 
-    def blocks(self, a: Station, b: Station, line: str | None, when: int, radius_m: float) -> bool:
+    def blocks(self, a: Station, b: Station, line: str | None, when: int, radius_m: float,
+               category: str | None = None) -> bool:
         """True if a train on `line` from a to b around time `when` runs into this disruption."""
         if not self.active:
             return False
         if self.expected_end is not None and when >= self.expected_end:
             return False
-        return self.zone.on_segment(a, b, line, radius_m)
+        return self.zone.on_segment(a, b, line, radius_m, category)
 
     def to_dict(self, lang: str = "en", with_messages: bool = True) -> dict:
         out = {

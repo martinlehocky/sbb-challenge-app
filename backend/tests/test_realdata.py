@@ -79,3 +79,13 @@ def test_every_scenario_can_be_advised(client):
         statuses.add(r.json()["status"])
     assert statuses <= {"ok", "affected", "no_alternative", "no_connection"}
     assert "affected" in statuses
+
+
+def test_ice_in_ic3_slot_is_caught(client):
+    """10 Sept 2026 11:05: the ticker says the IC3 Zürich HB xx:07 to Chur is cancelled; the timetable names
+    that 11:07 train "ICE" (train 275). It must be flagged and avoided."""
+    r = client.post("/api/v1/advice", json={"origin": "Zürich HB", "destination": "Chur",
+                                            "at": "2026-09-10T11:05:00+02:00"}).json()
+    assert r["status"] == "affected"
+    assert r["planned"]["departure"].startswith("2026-09-10T11:07")
+    assert r["alternatives"][0]["departure"] > "2026-09-10T11:07"

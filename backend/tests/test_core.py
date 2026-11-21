@@ -272,3 +272,16 @@ def test_understand_trip_without_ai(world):
     assert r["origin"].id == C and r["destination"].id == A and r["method"] == "text_match"
     r = understand_trip(stations, None, "Delta?")
     assert r["origin"] is None and r["destination"].id == D
+
+
+def test_line_matching_rules():
+    from sbb_backend.services.disruptions import Zone
+    z = Zone(points=[], section=None, lines=["IC3", "S2", "S25"], source="via")
+    assert z.matches_line("IC3", "IC") and z.matches_line("ic 3", "IC")
+    assert z.matches_line("ICE", "ICE")          # brand-only long-distance train in a listed IC slot
+    assert z.matches_line("001A", "TGV")         # TGV codes carry no Swiss line number either
+    assert not z.matches_line("IC5", "IC")       # a different numbered line
+    assert not z.matches_line("S8", "S")
+    assert not z.matches_line("S", "S")          # brand-only rule is for long-distance trains only
+    regional = Zone(points=[], section=None, lines=["S2", "S25"], source="via")
+    assert not regional.matches_line("ICE", "ICE")  # no long-distance line listed

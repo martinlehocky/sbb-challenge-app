@@ -288,26 +288,29 @@ class Planner:
 
     def journeys(self, origin: int, dest: int, depart_at: int, count: int = 3, horizon_s: int = 12 * 3600,
                  blocked: BlockFn | None = None) -> list[Journey]:
-        """Up to `count` journeys with increasing arrival times.
+        """Up to `count` journeys, each with a different arrival time, earliest arrival first.
 
-        For each arrival time the latest possible departure is kept (no needless waiting at the start).
+        For each arrival time only one journey is kept: the one leaving latest, then with fewest changes
+        (no needless waiting at the start, no needless change).
         """
-        out: list[Journey] = []
+        by_arrival: dict[int, Journey] = {}
         t = depart_at
         end = depart_at + horizon_s
-        while len(out) < count and t < end:
+        for _ in range(count * 6):  # bounded: every run moves t forward by at least a minute
+            if t >= end:
+                break
             j = self.earliest_arrival(origin, dest, t, horizon_s=end - t, blocked=blocked)
             if j is None:
                 break
-            for _ in range(4):  # same arrival, later departure?
-                later = self.earliest_arrival(origin, dest, j.departure + 60, horizon_s=end - j.departure - 60,
-                                              blocked=blocked)
-                if later is None or later.arrival != j.arrival:
-                    break
-                j = later
-            out.append(j)
+            kept = by_arrival.get(j.arrival)
+            if kept is None:
+                if len(by_arrival) >= count:
+                    break  # a new, later arrival time: we already have enough
+                by_arrival[j.arrival] = j
+            elif (j.departure, -j.transfers) > (kept.departure, -kept.transfers):
+                by_arrival[j.arrival] = j
             t = j.departure + 60
-        return out
+        return [by_arrival[a] for a in sorted(by_arrival)]
 
     def trip_info(self, run: int) -> TripInfo | None:
         return self.trips.get(trip_of(run))

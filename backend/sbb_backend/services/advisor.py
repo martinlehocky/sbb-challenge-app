@@ -67,12 +67,6 @@ T = {
         "fr": "Il n'y a pas de liaison en train pour le moment. Veuillez vous adresser au personnel de la gare.",
         "it": "Al momento non c'è un collegamento in treno. Si rivolga al personale della stazione.",
     },
-    "replacement_bus": {
-        "en": "Replacement buses are running.",
-        "de": "Es verkehren Ersatzbusse.",
-        "fr": "Des bus de remplacement circulent.",
-        "it": "Sono in servizio bus sostitutivi.",
-    },
     "until": {
         "until": {"en": "Expected until {time}.", "de": "Voraussichtlich bis {time}.",
                   "fr": "Prévu jusqu'à {time}.", "it": "Previsto fino alle {time}."},
@@ -113,17 +107,20 @@ class BlockChecker:
     radius_m: float
 
     def __post_init__(self) -> None:
-        self._geo: dict[tuple[int, int, str | None], list[int]] = {}
+        self._geo: dict[tuple[int, int, str | None, str | None], list[int]] = {}
 
     def hits(self, c: Connection) -> list[DisruptionState]:
-        line = self.planner.line_of(c[4])
-        key = (c[2], c[3], line)
+        info = self.planner.trip_info(c[4])
+        line = info.line if info else None
+        category = info.category if info else None
+        key = (c[2], c[3], line, category)
         idx = self._geo.get(key)
         if idx is None:
             a, b = self.stations.get(c[2]), self.stations.get(c[3])
             idx = []
             if a is not None and b is not None:
-                idx = [i for i, d in enumerate(self.disruptions) if d.zone.on_segment(a, b, line, self.radius_m)]
+                idx = [i for i, d in enumerate(self.disruptions)
+                       if d.zone.on_segment(a, b, line, self.radius_m, category)]
             self._geo[key] = idx
         out = []
         for i in idx:
@@ -247,8 +244,9 @@ class Advisor:
             d = affecting[0]
             if d.expected_end is not None and d.expected_end_kind in T["until"]:
                 parts.append(T["until"][d.expected_end_kind][lang].format(time=hhmm(d.expected_end)))
-            if any(x.replacement_bus for x in affecting):
-                parts.append(T["replacement_bus"][lang])
+            # No "replacement buses are running" sentence: VIA only records that buses were announced at some
+            # point, and they may have stopped since (10 Sept 2026: "from 11am there will be no rail replacement
+            # buses"). The latest official messages are returned in `affecting_disruptions[].messages` instead.
         if best is None:
             parts.append(T["no_alternative"][lang])
             return " ".join(parts)
