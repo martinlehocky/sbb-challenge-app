@@ -46,7 +46,7 @@ const en = {
     minutesToGo: (n: number) => `${n} min to go`,
   },
   welcome: {
-    product: 'Travel assistant',
+    product: 'Help kiosk',
     language: 'Language',
     disruptions: 'Disruptions',
     updated: (time: string) => `Updated ${time}`,
@@ -218,7 +218,7 @@ const de: Messages = {
     minutesToGo: (n) => `${n} Min. bis Abfahrt`,
   },
   welcome: {
-    product: 'Reiseassistent',
+    product: 'Hilfe-Kiosk',
     language: 'Sprache',
     disruptions: 'Störungen',
     updated: (time) => `Aktualisiert ${time}`,
@@ -388,7 +388,7 @@ const fr: Messages = {
     minutesToGo: (n) => `${n} min avant le départ`,
   },
   welcome: {
-    product: 'Assistant de voyage',
+    product: 'Borne d’aide',
     language: 'Langue',
     disruptions: 'Perturbations',
     updated: (time) => `Mis à jour à ${time}`,
@@ -558,7 +558,7 @@ const it: Messages = {
     minutesToGo: (n) => `${n} min alla partenza`,
   },
   welcome: {
-    product: 'Assistente di viaggio',
+    product: 'Chiosco d’aiuto',
     language: 'Lingua',
     disruptions: 'Perturbazioni',
     updated: (time) => `Aggiornato alle ${time}`,

@@ -7,7 +7,7 @@ All data is **mock data** for the demo scenario: **10 Sep 2026, Zürich HB, trav
 ## Global layout and style
 
 - Kiosk screens are **portrait 1080 × 1920** (stations have a portrait touch screen with a camera above it). The phone screen is **390 × 844**.
-- Header bar (~132–148 px high, thin bottom border): **left** = back / cancel / start-over button (outlined pill), **right** = current time (big, bold). Screen 1 instead has logo + "Travel assistant" on the left and language switch + time on the right.
+- Header bar (~132–148 px high, thin bottom border): **left** = back / cancel / start-over button (outlined pill), **right** = current time (big, bold). Screen 1 instead has logo + "Help kiosk" on the left and language switch + time on the right.
 - **Very large type**: headings 72–96 px, choice titles ~52 px, body ≥ 32 px, small notes ≥ 22 px. Big touch targets (buttons 112–140 px high on the kiosk).
 - **Primary button**: red, full pill, white bold text. **Secondary**: white with dark outline. Cards: light grey background, ~32 px radius. Choice cards: white with 4 px dark outline, icon in a grey circle on the left, chevron on the right.
 - **Green "be back" box** (light green background, dark green bold text) at the bottom of every screen from 4 onwards: "Your train: IR 35 at 11:37, platform 9" + "Please be back by 11:30".
@@ -15,7 +15,7 @@ All data is **mock data** for the demo scenario: **10 Sep 2026, Zürich HB, trav
 - In the real app all of this is built with SBB Lyne components and tokens (see `sbb-design-system/README.md`, component map), not with the mockup's hand-drawn styles. The mockup used placeholder icons and a "LOGO" box: use `sbb-logo` and real SBB icons instead.
 
 ## 1 · Welcome / idle (`/kiosk`)
-- Header: logo, "Travel assistant"; language switch **EN · FR · DE · IT** (EN selected); time **11:05**.
+- Header: logo, "Help kiosk"; language switch **EN · FR · DE · IT** (EN selected); time **11:05**.
 - Disruption banner (red-tinted, warning icon): **"Disruption Wädenswil – Pfäffikon SZ"** / "Overhead line damage. IC 3, S2 and S25 are cancelled on this section until early evening." / "Updated 11:00".
 - Hero (centred): **"Train cancelled? Let's find your next move."** / "Scan your ticket. We check your journey and show you the next train you can take."
 - Illustration: a ticket with a QR code, arrow pointing up to the camera, caption "Paper ticket, SwissPass or SBB app code".
