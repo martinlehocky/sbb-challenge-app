@@ -49,7 +49,7 @@ Deliberately not shown with live data, because the data cannot back it up: "Your
 |---|---|
 | `/` | Demo landing page: links to every screen and scenario |
 | `/kiosk` | 1 · “Need help?”: scan your ticket or ask a question |
-| `/kiosk/scan` | 2 · Scanning ticket (animates, then goes to 3; live webcam if allowed) |
+| `/kiosk/scan` | 2 · Scanning ticket: live webcam; **any** QR code shown to it opens the demo ticket (screen 3). Without a camera it animates and goes on by itself |
 | `/kiosk/result` | 3 · Your next train |
 | `/kiosk/wait` | 4 · What would you like to do? |
 | `/kiosk/wait/eat` | 5 · Eat or drink something |
@@ -92,7 +92,7 @@ Example: `/kiosk/wait/rest?time=night`, `/kiosk/wait/explore?wait=long&lang=de`.
 | Where | What the AI does | Without AI |
 |---|---|---|
 | `/kiosk/ask` | Answers questions by voice or text (Whisper + Qwen) from facts only: the traveller's journey and alternatives, live disruptions and their messages, and the hand-written station tips. Answers with a time not in the facts are rejected (then: “ask staff”). The answer comes in the language the question was asked in (EN/DE/FR/IT), whatever the screen language. A trip question (“Ich muss nach Genf”) also offers “Show my next train” | Notice: questions not available |
-| Screen 3 | “In plain words”: the advice rewritten for stressed or older travellers, shown as text. “What can I do in X min?” only with 10+ minutes before the back-by time, else “go to your platform”. “Ask about my trip” always | Box hidden |
+| Screen 3 | The status box (“Your train at 11:07 is cancelled” / “runs as planned”) shows the advice rewritten for stressed or older travellers, marked “AI-generated”; until it loads, or if AI fails, the box keeps its own text. “What can I do in X min?” only with 10+ minutes before the back-by time, else “go to your platform”. “Ask about my trip” always | Box shows its own text |
 | Screens 5 and 5b (Google) | With `GOOGLE_MAPS_API_KEY` in `backend/.env`: up to 3 real places from Google Places that fit the time until the back-by time and are open then, each with its photo on the left, the photographer's name and “Places and photos: Google Maps” | The hand-written ideas below |
 | Screens 5–5c | One AI idea next to two hand-written ones, when it fits the time left; otherwise the third hand-written idea | Three hand-written ideas |
 
@@ -106,7 +106,7 @@ Example: `/kiosk/wait/rest?time=night`, `/kiosk/wait/explore?wait=long&lang=de`.
 ## Not wired yet
 
 - "Stop updates" is visual only.
-- No QR decoding: the scan screen only shows the webcam and animates.
+- Demo scanning: any QR code counts as the ticket (its content is not read); the trip is always the demo ticket (`TRIP_DESTINATION`). QR codes are decoded in the browser (built-in `BarcodeDetector` where available, else `jsqr`); no picture leaves the kiosk.
 
 ## Backend
 

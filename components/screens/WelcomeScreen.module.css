@@ -25,7 +25,13 @@
 
 .languages sbb-tag {
   --sbb-tag-padding-inline: var(--sbb-spacing-fixed-2x);
-  min-width: 2.25rem;
+}
+
+/* Same width for every code and centred in it: the pills are equal and "IT" sits in the middle like "EN". */
+.langCode {
+  display: inline-block;
+  min-width: 1.375rem;
+  text-align: center;
 }
 
 .main {

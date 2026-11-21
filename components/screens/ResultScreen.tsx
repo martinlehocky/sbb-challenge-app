@@ -3,7 +3,7 @@
 import { getMessages, type Messages } from '@/lib/i18n/messages';
 import { withScenario } from '@/lib/scenario';
 import type { Connection, Scenario, TripResult } from '@/lib/types';
-import { AiSummary } from '../ai/AiSummary';
+import { AiSummaryText } from '../ai/AiSummary';
 import { CountdownRing } from '../CountdownRing';
 import { KioskFooter, KioskFrame, KioskMain } from '../KioskFrame';
 import { KioskHeader } from '../KioskHeader';
@@ -31,7 +31,10 @@ export function ResultScreen({
 }: {
   result: TripResult;
   scenario: Scenario;
-  /** AI summary shown: then only one other option is listed, so the screen still fits. */
+  /**
+   * AI is set up: the status box at the top shows the advice in plain words (AI-generated), and only one other
+   * option is listed, so the screen still fits with the longer text.
+   */
   aiEnabled?: boolean;
 }) {
   const { trip, best } = result;
@@ -57,23 +60,27 @@ export function ResultScreen({
         }
         center={`${trip.ticket.from.name} → ${trip.ticket.to.name}`}
       />
-      <KioskMain className={aiEnabled ? styles.mainWithAi : undefined}>
+      <KioskMain>
         {result.affected ? (
           <SbbNotification type="error" readOnly animation="none" className={styles.cancelled}>
             <SbbTitle level="1" visualLevel="4" className={styles.cancelledTitle}>
               <LineBadge line={planned.line} size="s" /> {t.result.cancelled(<s>{planned.departure}</s>)}
             </SbbTitle>
-            {result.disruption.reason}
+            <AiSummaryText
+              lang={scenario.lang}
+              to={scenario.to}
+              enabled={aiEnabled}
+              fallback={result.disruption.reason}
+            />
           </SbbNotification>
         ) : (
           <SbbNotification type="success" readOnly animation="none" className={styles.cancelled}>
             <SbbTitle level="1" visualLevel="4" className={styles.cancelledTitle}>
               <LineBadge line={planned.line} size="s" /> {t.result.runsAsPlanned(planned.departure)}
             </SbbTitle>
+            <AiSummaryText lang={scenario.lang} to={scenario.to} enabled={aiEnabled} fallback={null} />
           </SbbNotification>
         )}
-
-        {aiEnabled && <AiSummary lang={scenario.lang} to={scenario.to} />}
 
         <section className={styles.section} aria-labelledby="best-train">
           <h2 id="best-train" className={styles.label}>

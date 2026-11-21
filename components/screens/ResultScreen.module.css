@@ -204,11 +204,6 @@
   --sbb-notification-padding-block: var(--sbb-spacing-fixed-2x);
 }
 
-/* With the AI summary box the screen has one block more: a little less space between blocks. */
-.mainWithAi {
-  gap: var(--sbb-spacing-fixed-3x);
-}
-
 .towards {
   color: var(--sbb-color-4);
   font-size: var(--sbb-text-font-size-xs);

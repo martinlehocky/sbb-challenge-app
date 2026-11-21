@@ -53,7 +53,7 @@ export function WelcomeScreen({ info, scenario }: { info: WelcomeInfo; scenario:
                 aria-label={LANG_NAMES[lang]}
                 onClick={() => switchTo(lang)}
               >
-                {LANG_LABELS[lang]}
+                <span className={styles.langCode}>{LANG_LABELS[lang]}</span>
               </SbbTag>
             ))}
           </SbbTagGroup>
