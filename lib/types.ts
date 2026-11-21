@@ -20,9 +20,13 @@ export type WaitLevel = 'short' | 'medium' | 'long';
 /** Demo switch: time of day for the "Sit down and rest" screen. */
 export type TimeOfDay = 'day' | 'evening' | 'night';
 
+/** Kiosk languages (EN · FR · DE · IT). */
+export type Lang = 'en' | 'fr' | 'de' | 'it';
+
 export interface Scenario {
   wait: WaitLevel;
   time: TimeOfDay;
+  lang: Lang;
 }
 
 export interface Station {

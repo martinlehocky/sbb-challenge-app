@@ -1,5 +1,6 @@
 'use client';
 
+import { getMessages } from '@/lib/i18n/messages';
 import { withScenario } from '@/lib/scenario';
 import type { Scenario, WaitScenario } from '@/lib/types';
 import { BeBackBox } from '../BeBackBox';
@@ -12,30 +13,16 @@ import { useClientNav } from '../useClientNav';
 import styles from './WaitScreen.module.css';
 
 const CHOICES = [
-  {
-    path: '/kiosk/wait/eat',
-    icon: 'cup-hot-medium',
-    title: 'Eat or drink something',
-    text: 'Coffee, a snack or a meal',
-  },
-  {
-    path: '/kiosk/wait/explore',
-    icon: 'compass-localisation-medium',
-    title: 'Have a look around',
-    text: 'A short walk near the station',
-  },
-  {
-    path: '/kiosk/wait/rest',
-    icon: 'armchair-medium',
-    title: 'Sit down and rest',
-    text: 'A quiet seat, or a hotel if it gets late',
-  },
+  { key: 'eat', path: '/kiosk/wait/eat', icon: 'cup-hot-medium' },
+  { key: 'explore', path: '/kiosk/wait/explore', icon: 'compass-localisation-medium' },
+  { key: 'rest', path: '/kiosk/wait/rest', icon: 'armchair-medium' },
 ] as const;
 
 /** Screen 4 · What would you like to do? */
 export function WaitScreen({ wait, scenario }: { wait: WaitScenario; scenario: Scenario }) {
+  const t = getMessages(scenario.lang);
   return (
-    <KioskFrame>
+    <KioskFrame lang={scenario.lang}>
       <KioskHeader
         time="11:05"
         start={
@@ -44,23 +31,29 @@ export function WaitScreen({ wait, scenario }: { wait: WaitScenario; scenario: S
             variant="secondary"
             iconName="chevron-small-left-small"
           >
-            Back
+            {t.common.back}
           </NavButton>
         }
       />
       <KioskMain className={styles.main}>
         <ScreenIntro
-          title={`You have ${wait.waitMinutes} minutes`}
-          lead={<strong className={styles.question}>What would you like to do?</strong>}
+          title={t.wait.youHave(wait.waitMinutes)}
+          lead={<strong className={styles.question}>{t.wait.question}</strong>}
         />
         <ul className={styles.choices}>
           {CHOICES.map((choice) => (
-            <ChoiceCard key={choice.path} {...choice} href={withScenario(choice.path, scenario)} />
+            <ChoiceCard
+              key={choice.key}
+              icon={choice.icon}
+              title={t.wait[choice.key].title}
+              text={t.wait[choice.key].text}
+              href={withScenario(choice.path, scenario)}
+            />
           ))}
         </ul>
       </KioskMain>
       <KioskFooter>
-        <BeBackBox plan={wait.returnPlan} variant="platform" />
+        <BeBackBox plan={wait.returnPlan} lang={scenario.lang} variant="platform" />
       </KioskFooter>
     </KioskFrame>
   );

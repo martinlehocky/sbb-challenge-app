@@ -1,7 +1,9 @@
 'use client';
 
-import { withScenario } from '@/lib/scenario';
-import type { Scenario, WelcomeInfo } from '@/lib/types';
+import { useRouter } from 'next/navigation';
+import { getMessages, LANG_LABELS, LANG_NAMES } from '@/lib/i18n/messages';
+import { LANGS, withScenario } from '@/lib/scenario';
+import type { Lang, Scenario, WelcomeInfo } from '@/lib/types';
 import { KioskFooter, KioskFrame, KioskMain } from '../KioskFrame';
 import { KioskHeader } from '../KioskHeader';
 import { NavButton } from '../NavButton';
@@ -18,38 +20,52 @@ import {
 } from '../sbb';
 import styles from './WelcomeScreen.module.css';
 
-const LANGUAGES = ['EN', 'FR', 'DE', 'IT'] as const;
-
 /** Screen 1 · Welcome / idle. */
 export function WelcomeScreen({ info, scenario }: { info: WelcomeInfo; scenario: Scenario }) {
+  const router = useRouter();
+  const t = getMessages(scenario.lang);
+
+  const switchTo = (lang: Lang) => {
+    if (lang !== scenario.lang) {
+      router.replace(withScenario('/kiosk', { ...scenario, lang }), { scroll: false });
+    }
+  };
+
   return (
-    <KioskFrame>
+    <KioskFrame lang={scenario.lang}>
       <KioskHeader
         time={info.now}
         start={
           <div className={styles.brand}>
             <SbbLogo protectiveRoom="none" className={styles.logo} />
-            <span className={styles.product}>Travel assistant</span>
+            <span className={styles.product}>{t.welcome.product}</span>
           </div>
         }
         end={
-          <SbbTagGroup size="s" accessibilityLabel="Language" className={styles.languages}>
-            {LANGUAGES.map((lang) => (
-              <SbbTag key={lang} value={lang} checked={lang === 'EN'}>
-                {lang}
+          <SbbTagGroup size="s" accessibilityLabel={t.welcome.language} className={styles.languages}>
+            {LANGS.map((lang) => (
+              <SbbTag
+                key={lang}
+                value={lang}
+                checked={lang === scenario.lang}
+                lang={lang}
+                aria-label={LANG_NAMES[lang]}
+                onClick={() => switchTo(lang)}
+              >
+                {LANG_LABELS[lang]}
               </SbbTag>
             ))}
           </SbbTagGroup>
         }
       />
       <KioskMain className={styles.main}>
-        <SbbAlertGroup accessibilityTitle="Disruptions" accessibilityTitleLevel="2" className={styles.alerts}>
+        <SbbAlertGroup accessibilityTitle={t.welcome.disruptions} accessibilityTitleLevel="2" className={styles.alerts}>
           {info.disruptions.map((d) => (
-            <SbbAlert key={d.id} size="l" readOnly iconName="disruption" animation="none">
-              <SbbTitle level="2" visualLevel="4">
+            <SbbAlert key={d.id} size="m" readOnly iconName="disruption" animation="none">
+              <SbbTitle level="2">
                 {d.title}
               </SbbTitle>
-              {d.summary} <span className={styles.updated}>Updated {d.updatedAt}</span>
+              {d.summary} <span className={styles.updated}>{t.welcome.updated(d.updatedAt)}</span>
             </SbbAlert>
           ))}
         </SbbAlertGroup>
@@ -57,8 +73,8 @@ export function WelcomeScreen({ info, scenario }: { info: WelcomeInfo; scenario:
         <div className={styles.hero}>
           <ScreenIntro
             align="center"
-            title="Train cancelled? Let's find your next move."
-            lead="Scan your ticket. We check your journey and show you the next train you can take."
+            title={t.welcome.title}
+            lead={t.welcome.lead}
           />
 
           <figure className={styles.illustration}>
@@ -71,20 +87,20 @@ export function WelcomeScreen({ info, scenario }: { info: WelcomeInfo; scenario:
                 <span />
               </span>
             </div>
-            <figcaption className={styles.caption}>Paper ticket, SwissPass or SBB app code</figcaption>
+            <figcaption className={styles.caption}>{t.welcome.caption}</figcaption>
           </figure>
         </div>
       </KioskMain>
       <KioskFooter>
         <NavButton href={withScenario('/kiosk/scan', scenario)} iconName="qrcode-small" className={styles.fullWidth}>
-          Scan my ticket
+          {t.welcome.scan}
         </NavButton>
         <SbbSecondaryButton size="l" className={styles.fullWidth}>
-          No ticket? Type your destination
+          {t.welcome.noTicket}
         </SbbSecondaryButton>
         <p className={styles.staff}>
           <SbbIcon name="circle-information-small" />
-          Prefer to talk to someone? Staff are at the info point in the main hall.
+          {t.welcome.staff}
         </p>
       </KioskFooter>
     </KioskFrame>

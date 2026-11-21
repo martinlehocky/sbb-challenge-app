@@ -50,6 +50,7 @@
 }
 
 .l .label span {
+  max-width: 80%;
   color: var(--sbb-color-4);
   font-size: var(--sbb-text-font-size-xs);
 }

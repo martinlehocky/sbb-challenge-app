@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { getMessages, type Messages } from '@/lib/i18n/messages';
 import { withScenario } from '@/lib/scenario';
 import type { Scenario, Trip } from '@/lib/types';
 import { KioskFooter, KioskFrame, KioskMain } from '../KioskFrame';
@@ -16,14 +17,11 @@ const STEP_MS = 1000;
 /** Screen 2 · Scanning ticket. */
 export function ScanScreen({ trip, scenario }: { trip: Trip; scenario: Scenario }) {
   const router = useRouter();
+  const t = getMessages(scenario.lang);
   const resultHref = withScenario('/kiosk/result', scenario);
   const route = `${trip.ticket.from.name} → ${trip.ticket.to.name}`;
 
-  const steps = [
-    `Ticket recognised: ${route}`,
-    'Checking your train against live disruptions…',
-    'Finding your best alternative',
-  ];
+  const steps = [t.scan.recognised(route), t.scan.checking, t.scan.finding];
 
   // Index of the step in progress; steps before it are done.
   const [active, setActive] = useState(0);
@@ -42,29 +40,29 @@ export function ScanScreen({ trip, scenario }: { trip: Trip; scenario: Scenario 
   }, [active, steps.length, router, resultHref]);
 
   return (
-    <KioskFrame>
+    <KioskFrame lang={scenario.lang}>
       <KioskHeader
         time="11:05"
         start={
           <NavButton href={withScenario('/kiosk', scenario)} variant="secondary" iconName="cross-small">
-            Cancel
+            {t.common.cancel}
           </NavButton>
         }
         center={
           <>
             <SbbIcon name="arrow-up-small" />
-            Camera is above the screen
+            {t.scan.cameraAbove}
           </>
         }
       />
       <KioskMain className={styles.main}>
         <ScreenIntro
           align="center"
-          title="Hold your ticket up to the camera"
-          lead="Paper ticket, SwissPass or the QR code in the SBB app"
+          title={t.scan.title}
+          lead={t.scan.lead}
         />
 
-        <Viewfinder trip={trip} />
+        <Viewfinder trip={trip} t={t} />
 
         <ol className={styles.steps} aria-live="polite">
           {steps.map((text, i) => {
@@ -84,10 +82,10 @@ export function ScanScreen({ trip, scenario }: { trip: Trip; scenario: Scenario 
         <div className={styles.footerRow}>
           <p className={styles.privacy}>
             <SbbIcon name="lock-closed-small" />
-            We only read your route. No images are stored.
+            {t.scan.privacy}
           </p>
           <NavButton href={resultHref} variant="accent" size="s">
-            Demo: continue
+            {t.scan.demoContinue}
           </NavButton>
         </div>
       </KioskFooter>
@@ -99,7 +97,7 @@ export function ScanScreen({ trip, scenario }: { trip: Trip; scenario: Scenario 
  * Dark camera viewfinder. Shows the live webcam if the browser allows it,
  * otherwise a drawn ticket. Nothing is recorded or decoded yet.
  */
-function Viewfinder({ trip }: { trip: Trip }) {
+function Viewfinder({ trip, t }: { trip: Trip; t: Messages }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [live, setLive] = useState(false);
 
@@ -130,7 +128,7 @@ function Viewfinder({ trip }: { trip: Trip }) {
   }, []);
 
   return (
-    <div className={styles.viewfinder} role="img" aria-label="Camera view">
+    <div className={styles.viewfinder} role="img" aria-label={t.scan.cameraView}>
       <video ref={videoRef} className={styles.video} hidden={!live} autoPlay muted playsInline />
       {!live && (
         <div className={styles.ticket} aria-hidden="true">
@@ -139,7 +137,7 @@ function Viewfinder({ trip }: { trip: Trip }) {
               {trip.ticket.from.name} → {trip.ticket.to.name}
             </strong>
             <span>
-              {trip.ticket.travelClass === 2 ? '2nd' : '1st'} class · {trip.ticket.printedDate}
+              {t.scan.travelClass(trip.ticket.travelClass)} · {trip.ticket.printedDate}
             </span>
           </div>
           <SbbIcon name="qrcode-large" className={styles.qr} />

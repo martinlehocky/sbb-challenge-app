@@ -4,5 +4,5 @@ import { parseScenario } from '@/lib/scenario';
 
 export default async function Page({ searchParams }: PageProps<'/phone'>) {
   const scenario = parseScenario(await searchParams);
-  return <PhoneScreen trip={await getPhoneTrip()} scenario={scenario} />;
+  return <PhoneScreen trip={await getPhoneTrip(scenario.lang)} scenario={scenario} />;
 }

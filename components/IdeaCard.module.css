@@ -1,7 +1,7 @@
 .card {
   --sbb-card-border-radius: var(--sbb-border-radius-8x);
-  --sbb-card-padding-block-default: var(--sbb-spacing-fixed-3x);
-  --sbb-card-padding-inline-default: var(--sbb-spacing-fixed-6x);
+  --sbb-card-padding-block-default: var(--sbb-spacing-fixed-2x);
+  --sbb-card-padding-inline-default: var(--sbb-spacing-fixed-5x);
 }
 
 .row {
@@ -16,8 +16,13 @@
   gap: var(--sbb-spacing-fixed-5x);
 }
 
+.withMedia .meta {
+  column-gap: var(--sbb-spacing-fixed-3x);
+}
+
 .meta .note {
   max-width: none;
+  font-size: var(--sbb-text-font-size-s);
   white-space: nowrap;
 }
 

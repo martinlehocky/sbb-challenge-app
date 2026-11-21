@@ -1,6 +1,8 @@
 'use client';
 
 import { useLayoutEffect, useState, type ReactNode } from 'react';
+import type { Lang } from '@/lib/types';
+import { DocumentLang } from './DocumentLang';
 import styles from './KioskFrame.module.css';
 
 export const KIOSK_WIDTH = 1080;
@@ -10,7 +12,7 @@ export const KIOSK_HEIGHT = 1920;
  * Fixed 1080 x 1920 portrait canvas, scaled down (never up) to fit the
  * window and centred. On a real portrait kiosk screen the scale is 1.
  */
-export function KioskFrame({ children }: { children: ReactNode }) {
+export function KioskFrame({ children, lang }: { children: ReactNode; lang: Lang }) {
   const [scale, setScale] = useState<number | null>(null);
 
   useLayoutEffect(() => {
@@ -36,9 +38,11 @@ export function KioskFrame({ children }: { children: ReactNode }) {
         }}
       >
         <div
+          lang={lang}
           className={`sbb-kiosk-canvas ${styles.canvas}`}
           style={{ transform: `scale(${s})` }}
         >
+          <DocumentLang lang={lang} />
           {children}
         </div>
       </div>

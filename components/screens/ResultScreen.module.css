@@ -33,7 +33,7 @@
   --sbb-card-border-color: var(--sbb-border-color-1);
   --sbb-card-border-width: var(--sbb-border-width-2x);
   --sbb-card-border-radius: var(--sbb-border-radius-8x);
-  --sbb-card-padding-block-default: var(--sbb-spacing-fixed-6x);
+  --sbb-card-padding-block-default: var(--sbb-spacing-fixed-5x);
   --sbb-card-padding-inline-default: var(--sbb-spacing-fixed-6x);
 }
 
@@ -57,6 +57,7 @@
   gap: var(--sbb-spacing-fixed-4x);
   font-size: var(--sbb-text-font-size-l);
   font-weight: bold;
+  white-space: nowrap;
 }
 
 .bestDeparture {
@@ -136,14 +137,21 @@
 .option {
   --sbb-card-border-radius: var(--sbb-border-radius-8x);
   --sbb-card-padding-block-default: var(--sbb-spacing-fixed-3x);
-  --sbb-card-padding-inline-default: var(--sbb-spacing-fixed-6x);
+  --sbb-card-padding-inline-default: var(--sbb-spacing-fixed-5x);
 }
 
 .optionRow {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr;
   align-items: center;
   gap: var(--sbb-spacing-fixed-5x);
+}
+
+.optionWhen {
+  display: flex;
+  flex-direction: column;
+  min-width: 4.5rem;
+  line-height: 1.2;
 }
 
 .optionTime {
@@ -164,7 +172,8 @@
 }
 
 .platform {
-  font-size: var(--sbb-text-font-size-m);
+  color: var(--sbb-color-3);
+  font-size: var(--sbb-text-font-size-xs);
   font-weight: bold;
   white-space: nowrap;
 }

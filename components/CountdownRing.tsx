@@ -1,12 +1,21 @@
+import type { Messages } from '@/lib/i18n/messages';
 import styles from './CountdownRing.module.css';
 
 /** Ring showing the minutes left until departure (full ring = 60 min). */
-export function CountdownRing({ minutes, size = 'l' }: { minutes: number; size?: 's' | 'l' }) {
+export function CountdownRing({
+  minutes,
+  t,
+  size = 'l',
+}: {
+  minutes: number;
+  t: Messages;
+  size?: 's' | 'l';
+}) {
   const r = 44;
   const c = 2 * Math.PI * r;
   const share = Math.max(0, Math.min(1, minutes / 60));
   return (
-    <div className={`${styles.ring} ${styles[size]}`} role="img" aria-label={`${minutes} min to go`}>
+    <div className={`${styles.ring} ${styles[size]}`} role="img" aria-label={t.common.minutesToGo(minutes)}>
       <svg viewBox="0 0 100 100" aria-hidden="true">
         <circle className={styles.track} cx="50" cy="50" r={r} />
         <circle
@@ -19,8 +28,7 @@ export function CountdownRing({ minutes, size = 'l' }: { minutes: number; size?:
         />
       </svg>
       <span className={styles.label} aria-hidden="true">
-        <strong>{minutes} min</strong>
-        {size === 'l' && <span>to go</span>}
+        {size === 'l' ? t.common.ring(minutes) : <strong>{t.common.minutes(minutes)}</strong>}
       </span>
     </div>
   );

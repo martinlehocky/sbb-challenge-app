@@ -1,6 +1,6 @@
 'use client';
 
-import { formatChanges } from '@/lib/format';
+import { getMessages, type Messages } from '@/lib/i18n/messages';
 import { withScenario } from '@/lib/scenario';
 import type { Connection, Scenario, TripResult } from '@/lib/types';
 import { CountdownRing } from '../CountdownRing';
@@ -21,14 +21,15 @@ import styles from './ResultScreen.module.css';
 export function ResultScreen({ result, scenario }: { result: TripResult; scenario: Scenario }) {
   const { trip, best } = result;
   const planned = trip.plannedTrain;
+  const t = getMessages(scenario.lang);
 
   return (
-    <KioskFrame>
+    <KioskFrame lang={scenario.lang}>
       <KioskHeader
         time={result.now}
         start={
           <NavButton href={withScenario('/kiosk', scenario)} variant="secondary" iconName="arrows-circle-small">
-            Start over
+            {t.common.startOver}
           </NavButton>
         }
         center={`${trip.ticket.from.name} → ${trip.ticket.to.name}`}
@@ -36,68 +37,59 @@ export function ResultScreen({ result, scenario }: { result: TripResult; scenari
       <KioskMain>
         <SbbNotification type="error" readOnly animation="none" className={styles.cancelled}>
           <SbbTitle level="1" visualLevel="4" className={styles.cancelledTitle}>
-            <LineBadge line={planned.line} size="s" /> Your train at <s>{planned.departure}</s> is cancelled
+            <LineBadge line={planned.line} size="s" /> {t.result.cancelled(<s>{planned.departure}</s>)}
           </SbbTitle>
           {result.disruption.reason}
         </SbbNotification>
 
         <section className={styles.section} aria-labelledby="best-train">
           <h2 id="best-train" className={styles.label}>
-            Your best next train
+            {t.result.bestLabel}
           </h2>
           <SbbCard color="white" className={styles.bestCard}>
             <div className={styles.bestTop}>
               <div className={styles.bestLine}>
                 <LineBadge line={best.train.line} size="l" />
                 <span className={styles.to}>
-                  to {best.train.direction ?? best.arrivalStation.name}
+                  {t.result.to(best.train.direction ?? best.arrivalStation.name)}
                   <SbbTimetableOccupancy secondClassOccupancy={best.occupancy.secondClass} />
                 </span>
               </div>
               <div className={styles.bestDeparture}>
                 <span className={styles.bigTime}>{best.train.departure}</span>
-                <span className={styles.muted}>departs</span>
+                <span className={styles.muted}>{t.result.departs}</span>
               </div>
-              <CountdownRing minutes={result.minutesToDeparture} />
+              <CountdownRing minutes={result.minutesToDeparture} t={t} />
             </div>
 
             <dl className={styles.tiles}>
               <div className={styles.tile}>
-                <dt>Platform</dt>
+                <dt>{t.result.platform}</dt>
                 <dd>{best.train.platform}</dd>
               </div>
               <div className={styles.tile}>
-                <dt>Arrives {best.arrivalStation.name}</dt>
+                <dt>{t.result.arrives(best.arrivalStation.name)}</dt>
                 <dd>{best.arrival}</dd>
               </div>
               <div className={styles.tile}>
-                <dt>vs. your plan</dt>
-                <dd className={styles.late}>+{best.delayVsPlanMinutes} min</dd>
+                <dt>{t.result.vsPlan}</dt>
+                <dd className={styles.late}>{t.result.plusMin(best.delayVsPlanMinutes)}</dd>
               </div>
             </dl>
 
             <p className={styles.fact}>
               <SbbIcon name="circle-tick-small" className={styles.ok} />
               <span>
-                {best.changes === 0 ? 'Direct, no changes.' : `${formatChanges(best.changes)}.`}{' '}
-                {best.ticketValid && (
-                  <>
-                    <strong>Your ticket is valid</strong> on this train.
-                  </>
-                )}
+                {best.changes === 0 ? t.result.direct : `${t.common.changes(best.changes)}.`}{' '}
+                {best.ticketValid && t.result.ticketValid}
               </span>
             </p>
             {best.occupancy.secondClass === 'high' && (
               <p className={styles.fact}>
                 <SbbIcon name="user-group-small" />
                 <span>
-                  Expected to be very busy.
-                  {best.boardingHint && (
-                    <>
-                      {' '}
-                      Board at the <strong>{best.boardingHint}</strong>.
-                    </>
-                  )}
+                  {t.result.busy}
+                  {best.boardingHint && <> {t.result.boardAt(best.boardingHint)}</>}
                 </span>
               </p>
             )}
@@ -106,11 +98,11 @@ export function ResultScreen({ result, scenario }: { result: TripResult; scenari
 
         <section className={styles.section} aria-labelledby="other-options">
           <h2 id="other-options" className={styles.label}>
-            Other options
+            {t.result.otherOptions}
           </h2>
           <ul className={styles.options}>
             {result.alternatives.map((c) => (
-              <OptionRow key={c.id} connection={c} />
+              <OptionRow key={c.id} connection={c} t={t} />
             ))}
           </ul>
         </section>
@@ -118,10 +110,10 @@ export function ResultScreen({ result, scenario }: { result: TripResult; scenari
       <KioskFooter>
         <div className={styles.actions}>
           <NavButton href={withScenario('/kiosk/wait', scenario)}>
-            What can I do in {result.minutesToDeparture} min?
+            {t.result.whatCanIDo(result.minutesToDeparture)}
           </NavButton>
           <NavButton href={withScenario('/phone', scenario)} variant="secondary" iconName="smartphone-small">
-            Send to my phone
+            {t.result.sendToPhone}
           </NavButton>
         </div>
       </KioskFooter>
@@ -129,19 +121,21 @@ export function ResultScreen({ result, scenario }: { result: TripResult; scenari
   );
 }
 
-function OptionRow({ connection: c }: { connection: Connection }) {
+function OptionRow({ connection: c, t }: { connection: Connection; t: Messages }) {
   return (
     <li>
       <SbbCard color="milk" className={styles.option}>
         <div className={styles.optionRow}>
-          <span className={styles.optionTime}>{c.train.departure}</span>
+          <div className={styles.optionWhen}>
+            <span className={styles.optionTime}>{c.train.departure}</span>
+            <span className={styles.platform}>{t.result.platformShort(c.train.platform)}</span>
+          </div>
           <div className={styles.optionBody}>
             <strong>{c.routeLabel}</strong>
             <span className={styles.muted}>
-              {c.tradeOff}: {c.arrivalStation.name} {c.arrival} · {formatChanges(c.changes)}
+              {c.tradeOff}: {c.arrivalStation.name} {c.arrival} · {t.common.changes(c.changes)}
             </span>
           </div>
-          <span className={styles.platform}>Pl. {c.train.platform}</span>
         </div>
       </SbbCard>
     </li>

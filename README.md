@@ -39,7 +39,9 @@ Kiosk pages are drawn on a fixed **1080 × 1920** portrait canvas that is scaled
 | `wait` | `short` (S5 11:14, 9 min) · `medium` (IR 35 11:37, 32 min) · `long` (IR 35 12:37, 92 min) | `medium` | screens 4, 5, 5b |
 | `time` | `day` (11:05) · `evening` (19:40) · `night` (23:40, "No more trains tonight") | `day` | screen 5c |
 
-Example: `/kiosk/wait/rest?time=night`, `/kiosk/wait/explore?wait=long`. The parameters are kept while you click through the kiosk.
+| `lang` | `en` · `fr` · `de` · `it` | `en` | all kiosk screens and the phone |
+
+Example: `/kiosk/wait/rest?time=night`, `/kiosk/wait/explore?wait=long&lang=de`. The parameters are kept while you click through the kiosk. The language can also be switched with the EN · FR · DE · IT buttons on the welcome screen.
 
 ## Code map
 
@@ -48,7 +50,8 @@ Example: `/kiosk/wait/rest?time=night`, `/kiosk/wait/explore?wait=long`. The par
 - `components/`: shared kiosk parts (`KioskFrame`, `KioskHeader`, `BeBackBox`, `IdeaCard`, `NavButton`, …). Styling uses CSS modules and SBB design tokens (`--sbb-*`) only.
 - `components/sbb.ts`: the only place Lyne React components are imported from. Its first import, `lib/lyne-config.ts`, points `<sbb-icon>` to the local icons in `public/sbb-icons/`.
 - `lib/types.ts`: data types (`Trip`, `Disruption`, `Connection`, `WaitScenario`, `Idea`, `Place`, `RestOption`, `PhoneTrip`, …), shaped like the future API responses.
-- `lib/mock-data.ts`: **all demo data**. Keep `[Hotel name]` / `[price]` as placeholders: we have no hotel data and must not invent any.
+- `lib/i18n/messages.tsx`: all UI text in EN · FR · DE · IT (English = `docs/SCREENS.md`; Swiss German without "ß", SBB = CFF/FFS in French/Italian, formal address). Add a text there in all four languages.
+- `lib/mock-data.ts`: **all demo data**, texts in all four languages via `tx(en, de, fr, it)`; `lib/data.ts` returns them in the requested language. Keep `[Hotel name]` / `[price]` as placeholders: we have no hotel data and must not invent any.
 - `lib/data.ts`: async data functions used by the pages. To connect the backend, replace their bodies with API calls; the pages stay as they are.
 - `public/sbb-icons/`: only the SBB icons we use (copied from the SBB icon set). Add a new icon by copying its SVG from the SBB icons folder; check the exact name first.
 - `public/photos/`: real photos for screen 5b go here (see the README in that folder).
@@ -57,7 +60,6 @@ Example: `/kiosk/wait/rest?time=night`, `/kiosk/wait/explore?wait=long`. The par
 
 - "No ticket? Type your destination" and "Stop updates" are visual only.
 - No QR decoding: the scan screen only shows the webcam and animates.
-- Language switch (EN · FR · DE · IT) is visual only.
 
 ## Next: backend
 

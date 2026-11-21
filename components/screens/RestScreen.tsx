@@ -1,6 +1,7 @@
 'use client';
 
 import { formatWalk } from '@/lib/format';
+import { getMessages } from '@/lib/i18n/messages';
 import type { RestKind, RestScenario, Scenario } from '@/lib/types';
 import { IconCircle, IdeaCard } from '../IdeaCard';
 import { SbbIcon, SbbNotification, SbbTitle } from '../sbb';
@@ -16,6 +17,7 @@ const KIND_ICONS: Record<RestKind, string> = {
 
 /** Screen 5c · Sit down and rest (changes with the time of day). */
 export function RestScreen({ rest, scenario }: { rest: RestScenario; scenario: Scenario }) {
+  const t = getMessages(scenario.lang);
   return (
     <WaitIdeasLayout
       scenario={scenario}
@@ -37,7 +39,7 @@ export function RestScreen({ rest, scenario }: { rest: RestScenario; scenario: S
               )}
             </>,
           ]}
-          walk={formatWalk(option.walk)}
+          walk={formatWalk(option.walk, t)}
           note={option.note}
           notePlacement="below"
         />
@@ -45,7 +47,7 @@ export function RestScreen({ rest, scenario }: { rest: RestScenario; scenario: S
       {rest.help && (
         <li className={styles.help}>
           <SbbNotification type="info" readOnly animation="none" className={styles.helpBox}>
-            <SbbTitle level="2" visualLevel="5">
+            <SbbTitle level="2" visualLevel="6">
               {rest.help.title}
             </SbbTitle>
             {rest.help.text}

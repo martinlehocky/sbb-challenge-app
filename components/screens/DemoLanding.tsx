@@ -1,6 +1,7 @@
 'use client';
 
-import { TIMES_OF_DAY, WAIT_LEVELS, withScenario } from '@/lib/scenario';
+import { LANG_NAMES } from '@/lib/i18n/messages';
+import { LANGS, TIMES_OF_DAY, WAIT_LEVELS, withScenario } from '@/lib/scenario';
 import type { Scenario, TimeOfDay, WaitLevel } from '@/lib/types';
 import { NavButton } from '../NavButton';
 import { SbbLink, SbbLogo, SbbTitle } from '../sbb';
@@ -19,7 +20,7 @@ const TIME_LABELS: Record<TimeOfDay, string> = {
   night: 'night (23:40)',
 };
 
-const base: Scenario = { wait: 'medium', time: 'day' };
+const base: Scenario = { wait: 'medium', time: 'day', lang: 'en' };
 
 /** Demo landing page for presenters: jump to any screen and scenario. */
 export function DemoLanding() {
@@ -43,6 +44,19 @@ export function DemoLanding() {
             Open the phone view
           </NavButton>
         </div>
+
+        <section className={styles.section}>
+          <SbbTitle level="2" visualLevel="4">
+            Kiosk languages
+          </SbbTitle>
+          <ul className={styles.list}>
+            {LANGS.map((lang) => (
+              <Item key={lang} href={withScenario('/kiosk', { ...base, lang })}>
+                {`1 · Welcome – ${LANG_NAMES[lang]}`}
+              </Item>
+            ))}
+          </ul>
+        </section>
 
         <section className={styles.section}>
           <SbbTitle level="2" visualLevel="4">
@@ -102,7 +116,8 @@ export function DemoLanding() {
           </ul>
           <p className={styles.note}>
             The switches are query parameters (<code>?wait=short|medium|long</code>,{' '}
-            <code>?time=day|evening|night</code>) and are kept while you click through the kiosk.
+            <code>?time=day|evening|night</code>, <code>?lang=en|fr|de|it</code>) and are kept while you
+            click through the kiosk. The language can also be changed on the welcome screen.
           </p>
         </section>
       </main>

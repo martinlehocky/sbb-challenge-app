@@ -1,11 +1,11 @@
 .figure {
   flex: none;
-  width: 8rem;
+  width: 7rem;
   margin: 0;
 }
 
 .image {
-  width: 8rem;
+  width: 7rem;
   --sbb-image-aspect-ratio: 1 / 1;
 }
 
@@ -21,8 +21,8 @@
   align-items: center;
   justify-content: center;
   gap: var(--sbb-spacing-fixed-2x);
-  width: 8rem;
-  height: 8rem;
+  width: 7rem;
+  height: 7rem;
   padding: var(--sbb-spacing-fixed-3x);
   border: var(--sbb-border-width-1x) dashed var(--sbb-border-color-5);
   border-radius: var(--sbb-border-radius-4x);
@@ -32,6 +32,9 @@
 }
 
 .label {
+  max-width: 100%;
   font-size: var(--sbb-text-font-size-xs);
+  overflow-wrap: break-word;
+  hyphens: auto;
   line-height: var(--sbb-typo-line-height-heading);
 }

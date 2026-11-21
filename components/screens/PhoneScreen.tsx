@@ -1,5 +1,6 @@
 'use client';
 
+import { getMessages } from '@/lib/i18n/messages';
 import { withScenario } from '@/lib/scenario';
 import type { PhoneTrip, Scenario, UpdateTone } from '@/lib/types';
 import { CountdownRing } from '../CountdownRing';
@@ -25,11 +26,12 @@ const TONE_CLASS: Record<UpdateTone, string> = {
 /** Screen 6 · Live updates on phone. */
 export function PhoneScreen({ trip, scenario }: { trip: PhoneTrip; scenario: Scenario }) {
   const { latest, train } = trip;
+  const t = getMessages(scenario.lang);
   return (
-    <PhoneFrame>
+    <PhoneFrame lang={scenario.lang}>
       <header className={styles.header}>
         <div>
-          <p className={styles.kicker}>Your trip today</p>
+          <p className={styles.kicker}>{t.phone.tripToday}</p>
           <SbbTitle level="1" visualLevel="4" className={styles.route}>
             {trip.from.name} → {trip.to.name}
           </SbbTitle>
@@ -41,12 +43,9 @@ export function PhoneScreen({ trip, scenario }: { trip: PhoneTrip; scenario: Sce
         <div aria-live="polite">
           <SbbNotification type="warn" readOnly animation="none" className={styles.update}>
             <SbbIcon slot="icon" name="bell-small" />
-            <span className={styles.updateLabel}>New update · {latest.time}</span>
+            <span className={styles.updateLabel}>{t.phone.newUpdate(latest.time)}</span>
             <strong className={styles.updateHeadline}>{latest.headline}</strong>
-            <span className={styles.updateText}>
-              Still platform {latest.platform}. You can stay a bit longer: head back by{' '}
-              <strong>{latest.headBackBy}</strong>.
-            </span>
+            <span className={styles.updateText}>{t.phone.updateText(latest.platform, latest.headBackBy)}</span>
           </SbbNotification>
         </div>
 
@@ -54,25 +53,25 @@ export function PhoneScreen({ trip, scenario }: { trip: PhoneTrip; scenario: Sce
           <div className={styles.trainRow}>
             <div className={styles.trainInfo}>
               <span className={styles.trainLine}>
-                <LineBadge line={train.line} size="s" /> to {train.direction}
+                <LineBadge line={train.line} size="s" /> {t.phone.to(train.direction)}
               </span>
               <span className={styles.trainTime}>
                 <strong>{train.departure}</strong>
                 {train.plannedDeparture && (
-                  <s aria-label={`was ${train.plannedDeparture}`}>{train.plannedDeparture}</s>
+                  <s aria-label={t.phone.was(train.plannedDeparture)}>{train.plannedDeparture}</s>
                 )}
               </span>
               <span className={styles.muted}>
-                Platform {train.platform} · arrives {train.arrivalStation.name} {train.arrival}
+                {t.phone.platformArrives(train.platform, train.arrivalStation.name, train.arrival)}
               </span>
             </div>
-            <CountdownRing minutes={train.minutesToDeparture} size="s" />
+            <CountdownRing minutes={train.minutesToDeparture} t={t} size="s" />
           </div>
         </SbbCard>
 
         <section aria-labelledby="timeline-title" className={styles.section}>
           <h2 id="timeline-title" className={styles.label}>
-            What happened so far
+            {t.phone.timeline}
           </h2>
           <ol className={styles.timeline}>
             {trip.timeline.map((u) => (
@@ -86,18 +85,16 @@ export function PhoneScreen({ trip, scenario }: { trip: PhoneTrip; scenario: Sce
         </section>
 
         <SbbCard color="milk" className={styles.watching}>
-          <p className={styles.label}>We&apos;re watching for you</p>
-          <p className={styles.watchingText}>
-            If the line reopens earlier or your platform changes, you&apos;ll get a message straight away.
-          </p>
+          <p className={styles.label}>{t.phone.watching}</p>
+          <p className={styles.watchingText}>{t.phone.watchingText}</p>
         </SbbCard>
 
         <div className={styles.actions}>
           <NavButton href={withScenario('/kiosk/wait', scenario)} size="m" className={styles.fullWidth}>
-            See things to do nearby
+            {t.phone.seeThings}
           </NavButton>
           <SbbSecondaryButton size="m" className={styles.fullWidth}>
-            Stop updates
+            {t.phone.stopUpdates}
           </SbbSecondaryButton>
         </div>
       </main>

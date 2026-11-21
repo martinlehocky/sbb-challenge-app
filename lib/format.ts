@@ -1,39 +1,32 @@
+import type { Messages } from './i18n/messages';
 import type { ReturnPlan, WalkTime } from './types';
 
-/** "1 minute walk", "3 minutes walk", "2 to 5 minutes walk". */
-export function formatWalk(walk: WalkTime): string {
-  if (walk.maxMinutes && walk.maxMinutes !== walk.minutes) {
-    return `${walk.minutes} to ${walk.maxMinutes} minutes walk`;
-  }
-  return walk.minutes === 1 ? '1 minute walk' : `${walk.minutes} minutes walk`;
-}
-
-/** "no changes", "1 change", "2 changes". */
-export function formatChanges(changes: number): string {
-  if (changes === 0) return 'no changes';
-  return changes === 1 ? '1 change' : `${changes} changes`;
+/** "1 minute walk", "3 minutes walk", "2 to 5 minutes walk" (in the UI language). */
+export function formatWalk(walk: WalkTime, t: Messages): string {
+  return t.common.walk(walk.minutes, walk.maxMinutes);
 }
 
 /** Text lines of the green "be back" box. */
 export function returnPlanLines(
   plan: ReturnPlan,
+  t: Messages,
   variant: 'default' | 'platform' = 'default',
 ): { train: string; backBy: string } {
   const { line, departure, platform } = plan.train;
   if (plan.day === 'tomorrow') {
     return {
-      train: `First train tomorrow: ${line.name} at ${departure}, platform ${platform}`,
-      backBy: `Please be at the station by ${plan.backBy}`,
+      train: t.common.firstTrainTomorrow(line.name, departure, platform),
+      backBy: t.common.beAtStation(plan.backBy),
     };
   }
   if (variant === 'platform') {
     return {
-      train: `Your train: ${line.name} at ${departure}`,
-      backBy: `Please be back at platform ${platform} by ${plan.backBy}`,
+      train: t.common.yourTrainShort(line.name, departure),
+      backBy: t.common.pleaseBackAtPlatform(platform, plan.backBy),
     };
   }
   return {
-    train: `Your train: ${line.name} at ${departure}, platform ${platform}`,
-    backBy: `Please be back by ${plan.backBy}`,
+    train: t.common.yourTrain(line.name, departure, platform),
+    backBy: t.common.pleaseBackBy(plan.backBy),
   };
 }

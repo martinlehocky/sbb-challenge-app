@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { getMessages } from '@/lib/i18n/messages';
 import { withScenario } from '@/lib/scenario';
 import type { ReturnPlan, Scenario } from '@/lib/types';
 import { BeBackBox } from './BeBackBox';
@@ -26,8 +27,9 @@ export function WaitIdeasLayout({
   returnPlan: ReturnPlan;
   children: ReactNode;
 }) {
+  const t = getMessages(scenario.lang);
   return (
-    <KioskFrame>
+    <KioskFrame lang={scenario.lang}>
       <KioskHeader
         time={time}
         start={
@@ -36,7 +38,7 @@ export function WaitIdeasLayout({
             variant="secondary"
             iconName="chevron-small-left-small"
           >
-            Choose something else
+            {t.common.chooseElse}
           </NavButton>
         }
       />
@@ -45,9 +47,9 @@ export function WaitIdeasLayout({
         <ul className={styles.list}>{children}</ul>
       </KioskMain>
       <KioskFooter>
-        <BeBackBox plan={returnPlan} />
+        <BeBackBox plan={returnPlan} lang={scenario.lang} />
         <NavButton href={withScenario('/kiosk/result', scenario)} className={styles.fullWidth}>
-          Back to my train
+          {t.common.backToTrain}
         </NavButton>
       </KioskFooter>
     </KioskFrame>
