@@ -1,5 +1,7 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# ---------------------------------------------------------------- front-end (Next.js)
+
 # dependencies
 /node_modules
 /.pnp
@@ -30,7 +32,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (only the example is committed)
+# env files (only the examples are committed; they may hold API keys)
 .env*
 !.env.example
 
@@ -40,3 +42,24 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ---------------------------------------------------------------- back-end (Python)
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Built database and raw SBB data (large, and not for publication)
+backend/data/
+*.db
+*.building
+*.zip
+*.csv
+*.xlsx
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
