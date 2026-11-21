@@ -265,24 +265,58 @@ function toQuestionResult(data: ApiQuestion, screenLang: Lang): QuestionResult {
   };
 }
 
+/** One earlier message of a chat at the kiosk (sent back so follow-up questions are understood). */
+export interface ChatTurn {
+  role: 'traveller' | 'kiosk';
+  text: string;
+}
+
+/** Most turns sent back: the backend uses the last 6 anyway, and accepts at most 20. */
+const MAX_CHAT_TURNS = 10;
+
+/** Keeps only well-formed turns, trimmed to what the backend accepts. */
+export function cleanChat(history: unknown): ChatTurn[] {
+  if (!Array.isArray(history)) return [];
+  return history
+    .filter(
+      (t): t is ChatTurn =>
+        !!t && (t.role === 'traveller' || t.role === 'kiosk') && typeof t.text === 'string' && !!t.text.trim(),
+    )
+    .slice(-MAX_CHAT_TURNS)
+    .map((t) => ({ role: t.role, text: t.text.trim().slice(0, 1000) }));
+}
+
 /**
  * A question at the kiosk, typed or spoken. `destination` = the traveller's trip when they ask about it
  * (after scanning); without it, a trip question ("I need to get to Bern") returns `tripDestination`.
+ * `chat`: the conversation so far and the destination already discussed, for follow-up questions.
  */
 export async function aiQuestion(
   input: { text: string } | { audio: Blob; filename: string },
   lang: Lang,
   trip?: { destination?: string },
+  chat?: { history: ChatTurn[]; contextDestination?: string },
 ): Promise<QuestionResult> {
   const cfg = config();
   // About the traveller's trip: their chosen destination, or the scanned ticket's.
   const destination = trip ? (trip.destination ?? cfg.destination) : undefined;
   const tips = stationTips(cfg, lang);
+  const history = cleanChat(chat?.history);
+  const contextDestination = chat?.contextDestination;
   if ('text' in input) {
     const data = await request<ApiQuestion>(
       cfg,
       '/question',
-      json({ question: input.text, station: cfg.kioskStation, at: cfg.at, lang, destination, extra_facts: tips }),
+      json({
+        question: input.text,
+        station: cfg.kioskStation,
+        at: cfg.at,
+        lang,
+        destination,
+        extra_facts: tips,
+        history,
+        context_destination: contextDestination,
+      }),
     );
     return toQuestionResult(data, lang);
   }
@@ -293,5 +327,7 @@ export async function aiQuestion(
   form.set('lang', lang);
   if (destination) form.set('destination', destination);
   form.set('extra_facts', JSON.stringify(tips));
+  if (history.length) form.set('history', JSON.stringify(history));
+  if (contextDestination) form.set('context_destination', contextDestination);
   return toQuestionResult(await request<ApiQuestion>(cfg, '/question/voice', { method: 'POST', body: form }), lang);
 }

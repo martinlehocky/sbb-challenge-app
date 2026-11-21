@@ -108,6 +108,27 @@ class LocationRequest(BaseModel):
     suggestions: bool = Field(False, description="Ask the AI for things to do nearby")
 
 
+class ChatTurn(BaseModel):
+    role: Literal["traveller", "kiosk"]
+    text: str = Field(..., min_length=1, max_length=1000)
+
+
+def parse_history(raw: str | None) -> list[dict]:
+    """History sent as a JSON form field (voice questions). Invalid items are dropped, never an error."""
+    if not raw:
+        return []
+    try:
+        items = json.loads(raw)
+    except ValueError:
+        return []
+    out: list[dict] = []
+    for item in items[-20:] if isinstance(items, list) else []:
+        if isinstance(item, dict) and item.get("role") in ("traveller", "kiosk") \
+                and isinstance(item.get("text"), str) and item["text"].strip():
+            out.append({"role": item["role"], "text": item["text"].strip()[:1000]})
+    return out
+
+
 class QuestionRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=500)
     station: str = Field(..., description="Kiosk station (id or name)")
@@ -116,6 +137,10 @@ class QuestionRequest(BaseModel):
     destination: str | None = Field(None, description="The traveller's destination, when the question is about their trip")
     extra_facts: list[str] = Field(default_factory=list, max_length=40,
                                    description="More facts the kiosk knows (e.g. hand-written station tips)")
+    history: list[ChatTurn] = Field(default_factory=list, max_length=20,
+                                    description="Earlier questions and answers of this conversation, oldest first")
+    context_destination: str | None = Field(
+        None, description="Destination already discussed in this conversation, used when the question names none")
 
 
 class PlacesRequest(BaseModel):
@@ -356,22 +381,32 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
         return transcript.strip(), stt
 
     def answer_question(question: str, station: str, at: str | None, lang: str, destination: str | None,
-                        extra_facts: list[str], spoken_lang: str | None = None) -> dict:
+                        extra_facts: list[str], spoken_lang: str | None = None,
+                        history: list[dict] | None = None, context_destination: str | None = None) -> dict:
         s = svc()
         kiosk = station_or_404(station)
         dest = station_or_404(destination) if destination else None
+        # A destination remembered from the conversation is only a hint: an unknown one is ignored, not an error.
+        context = s.stations.resolve(context_destination) if context_destination else None
         return s.assistant.answer(question, kiosk, when(at), lang=lang, destination=dest, extra_facts=extra_facts,
-                                  spoken_lang=spoken_lang)
+                                  spoken_lang=spoken_lang, history=history, context_destination=context)
 
     @app.post("/api/v1/question", tags=["assistant"])
     def question(req: QuestionRequest) -> dict:
-        """Answer a traveller's question at the kiosk from facts only (journey, disruptions, station tips)."""
-        return answer_question(req.question, req.station, req.at, req.lang, req.destination, req.extra_facts)
+        """Answer a traveller's question at the kiosk from facts only (journey, disruptions, station tips).
+
+        `history` (earlier turns) lets follow-up questions such as "and which platform?" be understood.
+        """
+        return answer_question(req.question, req.station, req.at, req.lang, req.destination, req.extra_facts,
+                               history=[t.model_dump() for t in req.history],
+                               context_destination=req.context_destination)
 
     @app.post("/api/v1/question/voice", tags=["assistant"])
     async def question_voice(file: UploadFile = File(...), station: str = Form(...), at: str | None = Form(None),
                              lang: Lang = Form("en"), destination: str | None = Form(None),
-                             extra_facts: str | None = Form(None, description="JSON list of strings")) -> dict:
+                             extra_facts: str | None = Form(None, description="JSON list of strings"),
+                             history: str | None = Form(None, description='JSON list of {"role", "text"}'),
+                             context_destination: str | None = Form(None)) -> dict:
         """Spoken question: speech to text, then the same as /question."""
         transcript, stt = await transcribe_request(file, station, lang)
         if not transcript:
@@ -384,7 +419,9 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
             facts = []
         # The language Whisper heard (or the screen language it re-transcribed in) is the answer language.
         spoken = stt.get("retried_in") or stt.get("detected_language")
-        out = await run_in_threadpool(answer_question, transcript, station, at, lang, destination, facts, spoken)
+        out = await run_in_threadpool(lambda: answer_question(
+            transcript, station, at, lang, destination, facts, spoken_lang=spoken,
+            history=parse_history(history), context_destination=context_destination))
         out["debug"] = {"speech_to_text": stt, **out.get("debug", {})}
         return out
 
