@@ -522,10 +522,12 @@ def test_places_best_rated_first_and_restaurants_count_as_a_meal(places_client, 
     good = _gplace("WellRated", 0.002)
     good["rating"] = 4.7
     sushi = _gplace("Sushi", 0.0005, ptype="japanese_restaurant")  # 35 min meal: does not fit 25 min
-    google.places = [low, good, sushi]
+    museum = _gplace("Art Museum", 0.0005, ptype="art_museum")  # has a café, but is not a place to eat
+    google.places = [low, good, sushi, museum]
     body = places_client.post("/api/v1/places/nearby", json={"station": str(A), "at": AT, "wait_minutes": 25,
                                                              "interest": "eat"}).json()
     assert [p["name"] for p in body["places"]] == ["WellRated", "LowRated"]
+    assert any(d.startswith("Art Museum: a art_museum") for d in body["debug"]["dropped"])
     assert any(d.startswith("Sushi: needs") for d in body["debug"]["dropped"])
     search = json.loads(google.requests[0].content)
     assert "hotel" in search["excludedPrimaryTypes"]
@@ -860,3 +862,31 @@ def test_station_on_the_way_is_about_the_route(client, fake):
     assert body["debug"]["trip_plan"] == "route" and body["route"] is None
     assert any(f.startswith("Part 2 of the route, Beta to Delta:") for f in body["debug"]["facts"])
     assert [v["name"] for v in body["context"]["via"]] == ["Beta"]
+
+
+def test_question_about_things_to_do_at_a_destination_uses_google_places(settings, fake, google):
+    fake.chat_answers = [{"origin": None, "destinations": ["Delta"], "language": "en"},
+                         {"language": "en", "answer": "In Delta you can visit the Old Tower.", "answered": True}]
+    tower = _gplace("Old Tower", 0.001, ptype="tourist_attraction")
+    tower["location"]["longitude"] = 7.3  # next to Delta station
+    google.places = [tower]
+    app = create_app(replace(settings, together_api_key="test-key", google_maps_api_key="g-key"),
+                     ai_transport=httpx.MockTransport(fake), places_transport=httpx.MockTransport(google))
+    with TestClient(app) as c:
+        body = c.post("/api/v1/question", json={"question": "Recommend me interesting stuff to do in Delta",
+                                                 "station": str(A), "at": AT}).json()
+    assert body["answered"] is True
+    assert any("Place to visit in Delta" in f and "Old Tower" in f for f in body["debug"]["facts"])
+    search = json.loads([q for q in google.requests if q.url.path.endswith("searchNearby")][0].content)
+    center = search["locationRestriction"]["circle"]["center"]
+    assert (center["latitude"], center["longitude"]) == (46.0, 7.3)  # around Delta, not the kiosk
+
+
+def test_places_wanted_in_four_languages():
+    from sbb_backend.services.assistant import places_wanted
+    assert places_wanted("Recommend me interesting stuff to do in Bern") == ["explore"]
+    assert places_wanted("Wo kann ich in Bern essen?") == ["eat"]
+    assert places_wanted("Que faire à Lausanne ?") == ["explore"]
+    assert places_wanted("Cosa posso vedere a Lugano?") == ["explore"]
+    assert places_wanted("When does my train leave?") == []
+

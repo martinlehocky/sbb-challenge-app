@@ -417,13 +417,6 @@ export function AskScreen({
             {back.label}
           </NavButton>
         }
-        end={
-          messages.length > 0 && (
-            <SbbSecondaryButton size="m" iconName="arrows-circle-small" onClick={clearChat} disabled={busy}>
-              {t.ask.newChat}
-            </SbbSecondaryButton>
-          )
-        }
       />
       <KioskMain className={styles.main}>
         {messages.length === 0 && (
@@ -511,12 +504,20 @@ export function AskScreen({
             </form>
           </div>
         )}
-        <p className={styles.privacy}>
-          <SbbIcon name="lock-closed-small" />
-          <span>
-            {t.ask.privacy} {t.ask.autoClear}
-          </span>
-        </p>
+        {/* "New conversation" lives here, not in the header: with it, the header had no room left for the clock. */}
+        <div className={styles.footerRow}>
+          <p className={styles.privacy}>
+            <SbbIcon name="lock-closed-small" />
+            <span>
+              {t.ask.privacy} {t.ask.autoClear}
+            </span>
+          </p>
+          {messages.length > 0 && (
+            <SbbSecondaryButton size="m" iconName="arrows-circle-small" onClick={clearChat} disabled={busy}>
+              {t.ask.newChat}
+            </SbbSecondaryButton>
+          )}
+        </div>
       </KioskFooter>
     </KioskFrame>
   );

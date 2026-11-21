@@ -34,6 +34,14 @@ DEFAULT_STAY = {"eat": 15, "explore": 20, "rest": 15}
 # Never suggested, even when Google also tags them as a restaurant or sight.
 EXCLUDED_PRIMARY = ["hotel", "lodging", "hostel", "gas_station", "supermarket", "grocery_store", "night_club", "bar",
                     "casino", "shopping_mall", "train_station", "transit_station", "bus_station", "parking"]
+# A museum with a café inside is tagged "cafe" too: for eating, the main type must be a food place.
+FOOD_TYPE_WORDS = ("restaurant", "cafe", "coffee", "bakery", "food", "sandwich", "ice_cream", "dessert", "tea_house",
+                   "confectionery", "pastry", "patisserie", "bistro", "brunch", "deli", "diner", "steak_house",
+                   "pizzeria", "bagel", "donut", "chocolate", "juice", "cafeteria", "meal_takeaway", "pub")
+
+
+def is_food_place(primary_type: str | None) -> bool:
+    return not primary_type or any(w in primary_type for w in FOOD_TYPE_WORDS)
 MIN_REVIEWS = 30  # below this, a rating says little
 WALK_M_PER_MIN = 70      # unhurried pace (many kiosk users are older)
 DETOUR = 1.3             # streets are longer than the straight line
@@ -172,6 +180,9 @@ class PlacesService:
         out: list[dict] = []
         for p in raw:
             name = (p.get("displayName") or {}).get("text") or "?"
+            if interest == "eat" and not is_food_place(p.get("primaryType")):
+                debug["dropped"].append(f"{name}: a {p.get('primaryType')}, not a place to eat")
+                continue
             if p.get("businessStatus") not in (None, "OPERATIONAL"):
                 debug["dropped"].append(f"{name}: {p.get('businessStatus')}")
                 continue

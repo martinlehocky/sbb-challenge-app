@@ -78,8 +78,8 @@ def build_services(settings: Settings, ai_transport: httpx.BaseTransport | None 
     ai = TogetherClient(settings, transport=ai_transport)
     advisor = Advisor(stations, disruptions, planner, ai, settings.disruption_radius_m)
     location = LocationService(stations, disruptions, ai)
-    assistant = Assistant(stations, disruptions, advisor, ai)
     places = PlacesService(settings, transport=places_transport)
+    assistant = Assistant(stations, disruptions, advisor, ai, places=places)
     return Services(settings, meta, stations, disruptions, planner, advisor, location, ai, assistant, places)
 
 

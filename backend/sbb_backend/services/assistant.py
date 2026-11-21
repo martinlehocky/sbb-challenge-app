@@ -134,14 +134,37 @@ def _disruption_lines(d: dict, label: str) -> list[str]:
     return out
 
 
+# "What can I do / eat in Bern?": words that ask for places (all four kiosk languages, lower case, word starts).
+_EAT_WORDS = ("eat", "food", "lunch", "dinner", "breakfast", "restaurant", "café", "cafe", "coffee", "hungry",
+              "essen", "mittag", "frühstück", "kaffee", "hunger", "manger", "repas", "déjeuner", "dîner",
+              "mangiare", "pranzo", "cena", "colazione", "fame", "ristorante")
+_SEE_WORDS = ("do ", "see", "visit", "recommend", "interesting", "sight", "museum", "things to", "stuff",
+              "tun", "unternehmen", "sehen", "besuchen", "empfehl", "sehenswürd", "interessant", "ausflug",
+              "faire", "voir", "visiter", "recommand", "intéressant", "musée", "fare", "vedere", "visitare",
+              "consigl", "interessant", "museo", "attrazion")
+MAX_PLACE_FACTS = 5
+
+
+def places_wanted(question: str) -> list[str]:
+    """Which kinds of places a question asks for: ['eat'], ['explore'], both, or none."""
+    q = f" {question.lower()} "
+    kinds = []
+    if any(w in q for w in _EAT_WORDS):
+        kinds.append("eat")
+    if any(w in q for w in _SEE_WORDS):
+        kinds.append("explore")
+    return kinds
+
+
 class Assistant:
     def __init__(self, stations: StationIndex, disruptions: DisruptionStore, advisor: Advisor,
-                 ai: TogetherClient, radius_m: float = 30000):
+                 ai: TogetherClient, radius_m: float = 30000, places=None):
         self.stations = stations
         self.disruptions = disruptions
         self.advisor = advisor
         self.ai = ai
         self.radius_m = radius_m
+        self.places = places  # PlacesService (Google), optional
         self.ideas = StopIdeas(ai)
 
     def answer(self, question: str, kiosk: Station, at: int, lang: str = "en",
@@ -256,7 +279,31 @@ class Assistant:
                 facts.append(f"No connection from {origin.name} to {dest.name} could be found.")
         if plan["offer"] is not None:
             result["trip_destination"] = plan["offer"].to_dict()
+        facts += self._place_facts(question, dest if dest is not None else kiosk, kiosk, at, lang, debug)
         return self._ai_answer(facts, question, kiosk, at, lang, screen_lang, history, extra_facts, result)
+
+    def _place_facts(self, question: str, station: Station, kiosk: Station, at: int, lang: str,
+                     debug: dict) -> list[str]:
+        """Real places near a station from Google ("What can I do in Bern?"), when the question asks for them."""
+        kinds = places_wanted(question)
+        if not kinds or self.places is None or not self.places.enabled:
+            return []
+        out: list[str] = []
+        where = "near the kiosk" if station.id == kiosk.id else f"in {station.name}, near the station"
+        for kind in kinds:
+            try:
+                found = self.places.nearby(station, at, kind, 120, lang, limit=MAX_PLACE_FACTS)["places"]
+            except Exception as exc:  # noqa: BLE001 - places are extra; never break the answer
+                debug.setdefault("places_error", str(exc))
+                continue
+            label = "Place to eat or drink" if kind == "eat" else "Place to visit"
+            for p in found:
+                rating = f", rated {p['rating']} ({p['rating_count']} reviews)" if p.get("rating") else ""
+                kind_label = f" ({p['type_label']})" if p.get("type_label") else ""
+                out.append(f"{label} {where} (Google Maps): {p['name']}{kind_label}{rating}, about "
+                           f"{p['walk_minutes']} min walk from {station.name} station.")
+        debug["place_facts"] = {"station": station.name, "kinds": kinds, "count": len(out)}
+        return out
 
     def _ai_answer(self, facts: list[str], question: str, kiosk: Station, at: int, lang: str, screen_lang: str,
                    history: list[dict] | None, extra_facts: list[str] | None, result: dict) -> dict:
