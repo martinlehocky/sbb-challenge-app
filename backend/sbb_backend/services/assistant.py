@@ -16,7 +16,7 @@ from ..timeutil import ZURICH
 from .advisor import Advisor
 from .disruptions import DisruptionStore
 from .stations import Station, StationIndex
-from .voice import understand_trip
+from .voice import conversation_text, understand_trip
 
 LANG_NAMES = {"en": "English", "de": "German", "fr": "French", "it": "Italian"}
 
@@ -31,8 +31,6 @@ def lang_code(value: object) -> str | None:
     return next((code for code, name in LANG_NAMES.items() if name.lower() == v), None)
 _TIME = re.compile(r"\b([01]?\d|2[0-3])[:.h]([0-5]\d)\b")
 MAX_EXTRA_FACTS = 30
-MAX_HISTORY_TURNS = 6      # last 3 questions and answers are enough to understand a follow-up
-MAX_HISTORY_CHARS = 400
 
 CANT_ANSWER = {
     "en": "Sorry, we cannot answer that reliably. Please ask staff at the info point.",
@@ -144,21 +142,30 @@ class Assistant:
     def answer(self, question: str, kiosk: Station, at: int, lang: str = "en",
                destination: Station | None = None, extra_facts: list[str] | None = None,
                spoken_lang: str | None = None, history: list[dict] | None = None,
-               context_destination: Station | None = None) -> dict:
+               context_destination: Station | None = None, context_origin: Station | None = None) -> dict:
         """Answer a traveller's question from facts only, in the language of the question.
 
         `lang` = the kiosk screen language (used when the question's language is unclear),
         `spoken_lang` = the language speech recognition heard, `destination` = the traveller's trip, if known.
-        Chat: `history` = earlier turns ({"role": "traveller"|"kiosk", "text"}), so a follow-up ("and which
-        platform?") is understood; `context_destination` = the trip already discussed in the conversation,
-        used like the traveller's trip when the new question names no destination of its own.
+        Chat: `history` = earlier turns ({"role": "traveller"|"kiosk", "text"}); it is used both to understand
+        which trip the question means ("the first one", "when does it arrive?") and to phrase the answer.
+        `context_destination` / `context_origin` = the trip the previous answer was about (the result's
+        `context`, sent back by the chat); used when the new question names no trip of its own.
         """
         screen_lang = lang if lang in LANG_NAMES else "en"
         # Best guess of the question's language before the answer: what was heard, else the screen language.
         lang = lang_code(spoken_lang) or screen_lang
         debug: dict = {}
         # What trip does the question name? Also in "about my trip" mode ("Can I go to Lugano instead?").
-        intent = understand_trip(self.stations, self.ai, question)
+        # With the conversation, so a reference to an earlier message is understood.
+        intent = understand_trip(self.stations, self.ai, question, history=history)
+        if intent.get("origin_from_conversation") and intent.get("origin") is not None:
+            # A start station taken from earlier messages is only trusted if it starts the trip being discussed;
+            # otherwise it is an earlier destination or a station from the kiosk's own answer ("what about Lugano
+            # instead?" after a trip to Chur must not plan Chur -> Lugano).
+            if context_origin is None or intent["origin"].id != context_origin.id:
+                debug["dropped_origin"] = intent["origin"].name
+                intent = {**intent, "origin": None, "origin_match": None}
         debug["trip_intent"] = _intent_debug(intent)
         if spoken_lang is None:
             lang = lang_code((intent.get("raw") or {}).get("language")) or lang
@@ -171,6 +178,9 @@ class Assistant:
             "trip_destination": None,
             "choices": [],
             "clarify": False,
+            # The trip this answer is about ({"origin", "destination"}), for the chat to send back next time;
+            # None when the answer is about no trip (the chat then keeps the trip it had).
+            "context": None,
             "debug": debug,
         }
         # Chat follow-up ("and which platform?"): the trip discussed before stands in for the traveller's trip.
@@ -179,10 +189,29 @@ class Assistant:
         if destination is None and context_destination is not None and context_destination.id != kiosk.id:
             remembered = context_destination
         plan = self._trip_plan(intent, kiosk, destination or remembered)
-        if remembered is not None and plan["kind"] == "ticket":
+        # Still the trip discussed before: the question named no trip ("ticket"), or named the same destination
+        # without a start station of its own ("trip" to the remembered destination, from the kiosk).
+        same_trip = remembered is not None and plan["destination"] is not None and \
+            plan["destination"].id == remembered.id and plan["origin"].id == kiosk.id and \
+            plan["kind"] in ("ticket", "trip")
+        if same_trip:
             plan["kind"] = "conversation"
             debug["trip_from_conversation"] = remembered.name
+            start = context_origin
+            if start is not None and start.id not in (kiosk.id, remembered.id):
+                # The trip discussed starts elsewhere ("from Winterthur to Chur"): keep planning from there.
+                plan["origin"] = start
+                plan["facts"].append(
+                    f"The trip discussed starts at {start.name} (the traveller is at {kiosk.name} now, not at "
+                    f"{start.name}). Its connections from {start.name} to {remembered.name} are listed below.")
+                debug["trip_from_conversation"] = f"{start.name} to {remembered.name}"
         debug["trip_plan"] = plan["kind"]
+        if plan["destination"] is not None and plan["kind"] in ("ticket", "conversation", "trip", "elsewhere"):
+            origin_st = plan["origin"]
+            result["context"] = {
+                "origin": origin_st.to_dict() if origin_st.id != kiosk.id else None,
+                "destination": plan["destination"].to_dict(),
+            }
         if plan["kind"] in ("several", "which"):
             # Ask back instead of guessing: one button per station (each opens that trip from the kiosk).
             text = SEVERAL_PLACES[lang] if plan["kind"] == "several" else WHICH_STATION[lang].format(name=plan["said"])
@@ -234,12 +263,10 @@ class Assistant:
             "answers. If the facts do not contain the answer, set answered to false."
         )
         user = "FACTS:\n" + "\n".join(f"- {f}" for f in facts)
-        turns = [t for t in (history or []) if t.get("text")][-MAX_HISTORY_TURNS:]
-        if turns:
-            who = {"traveller": "Traveller", "kiosk": "Kiosk"}
-            user += "\n\nCONVERSATION SO FAR:\n" + "\n".join(
-                f"{who.get(t.get('role'), 'Traveller')}: {str(t['text'])[:MAX_HISTORY_CHARS]}" for t in turns)
-            debug["history_turns"] = len(turns)
+        conversation = conversation_text(history)
+        if conversation:
+            user += "\n\nCONVERSATION SO FAR:\n" + conversation
+            debug["history_turns"] = conversation.count("\n") + 1
         user += (f"\n\nQUESTION: {question}\n\n"
                  "Write the answer in the language of the QUESTION (translate the facts if needed).")
         t0 = time.perf_counter()

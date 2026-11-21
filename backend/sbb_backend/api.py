@@ -141,6 +141,8 @@ class QuestionRequest(BaseModel):
                                     description="Earlier questions and answers of this conversation, oldest first")
     context_destination: str | None = Field(
         None, description="Destination already discussed in this conversation, used when the question names none")
+    context_origin: str | None = Field(
+        None, description="Start station of that trip, when it is not the kiosk (e.g. 'from Winterthur to Chur')")
 
 
 class PlacesRequest(BaseModel):
@@ -382,31 +384,37 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
 
     def answer_question(question: str, station: str, at: str | None, lang: str, destination: str | None,
                         extra_facts: list[str], spoken_lang: str | None = None,
-                        history: list[dict] | None = None, context_destination: str | None = None) -> dict:
+                        history: list[dict] | None = None, context_destination: str | None = None,
+                        context_origin: str | None = None) -> dict:
         s = svc()
         kiosk = station_or_404(station)
         dest = station_or_404(destination) if destination else None
-        # A destination remembered from the conversation is only a hint: an unknown one is ignored, not an error.
+        # The trip remembered from the conversation is only a hint: an unknown station is ignored, not an error.
         context = s.stations.resolve(context_destination) if context_destination else None
+        start = s.stations.resolve(context_origin) if context_origin and context is not None else None
         return s.assistant.answer(question, kiosk, when(at), lang=lang, destination=dest, extra_facts=extra_facts,
-                                  spoken_lang=spoken_lang, history=history, context_destination=context)
+                                  spoken_lang=spoken_lang, history=history, context_destination=context,
+                                  context_origin=start)
 
     @app.post("/api/v1/question", tags=["assistant"])
     def question(req: QuestionRequest) -> dict:
         """Answer a traveller's question at the kiosk from facts only (journey, disruptions, station tips).
 
-        `history` (earlier turns) lets follow-up questions such as "and which platform?" be understood.
+        `history` (earlier turns) lets follow-up questions such as "the first one" or "when does it arrive?" be
+        understood; the answer's `context` (the trip it was about) is meant to be sent back as
+        `context_destination` / `context_origin` with the next question.
         """
         return answer_question(req.question, req.station, req.at, req.lang, req.destination, req.extra_facts,
                                history=[t.model_dump() for t in req.history],
-                               context_destination=req.context_destination)
+                               context_destination=req.context_destination, context_origin=req.context_origin)
 
     @app.post("/api/v1/question/voice", tags=["assistant"])
     async def question_voice(file: UploadFile = File(...), station: str = Form(...), at: str | None = Form(None),
                              lang: Lang = Form("en"), destination: str | None = Form(None),
                              extra_facts: str | None = Form(None, description="JSON list of strings"),
                              history: str | None = Form(None, description='JSON list of {"role", "text"}'),
-                             context_destination: str | None = Form(None)) -> dict:
+                             context_destination: str | None = Form(None),
+                             context_origin: str | None = Form(None)) -> dict:
         """Spoken question: speech to text, then the same as /question."""
         transcript, stt = await transcribe_request(file, station, lang)
         if not transcript:
@@ -421,7 +429,8 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
         spoken = stt.get("retried_in") or stt.get("detected_language")
         out = await run_in_threadpool(lambda: answer_question(
             transcript, station, at, lang, destination, facts, spoken_lang=spoken,
-            history=parse_history(history), context_destination=context_destination))
+            history=parse_history(history), context_destination=context_destination,
+            context_origin=context_origin))
         out["debug"] = {"speech_to_text": stt, **out.get("debug", {})}
         return out
 

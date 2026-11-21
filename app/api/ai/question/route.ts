@@ -21,8 +21,9 @@ function stationId(value: FormDataEntryValue | null): string | undefined {
 /**
  * POST /api/ai/question (multipart form): `audio` (a recording) or `text`, plus `lang`, and for a question
  * about the traveller's trip `about=trip` with optional `to` (their destination; default the ticket's).
- * Chat: `history` (JSON list of {role: "traveller"|"kiosk", text}) and `context` (destination already discussed).
- * → { question, answer, answered, tripDestination, debug }
+ * Chat: `history` (JSON list of {role: "traveller"|"kiosk", text}), `context` (destination already discussed)
+ * and `context_origin` (its start station, when it is not the kiosk).
+ * → { question, answer, answered, tripDestination, context, debug }; `context` = the trip this answer was about.
  */
 export async function POST(request: Request) {
   let form: FormData;
@@ -36,8 +37,12 @@ export async function POST(request: Request) {
   const destination = typeof to === 'string' && /^\d{7}$/.test(to) ? to : undefined;
   // about=trip: the question is about the traveller's journey (ticket destination if no `to`).
   const trip = form.get('about') === 'trip' ? { destination } : undefined;
-  // Chat: earlier turns (JSON) and the destination already discussed, so follow-ups are understood.
-  const chat = { history: parseHistory(form.get('history')), contextDestination: stationId(form.get('context')) };
+  // Chat: earlier turns (JSON) and the trip already discussed, so follow-ups are understood.
+  const chat = {
+    history: parseHistory(form.get('history')),
+    contextDestination: stationId(form.get('context')),
+    contextOrigin: stationId(form.get('context_origin')),
+  };
   const audio = form.get('audio');
   const text = form.get('text');
   const started = Date.now();

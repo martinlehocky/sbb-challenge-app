@@ -82,8 +82,14 @@
   font-size: var(--sbb-text-font-size-s);
 }
 
+.withActions {
+  max-width: 100%;
+}
+
 .tripButton {
   margin-block-start: var(--sbb-spacing-fixed-2x);
+  max-width: 100%;
+  --sbb-button-padding-inline: var(--sbb-spacing-fixed-5x);
 }
 
 /* ---------------------------------------------------------------- composer (always at the bottom) */

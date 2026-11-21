@@ -210,7 +210,18 @@ export interface QuestionResult {
   clarify: boolean;
   /** With `clarify`: the stations to choose from (each opens that trip). */
   choices: { id: string; name: string }[];
+  /**
+   * The trip this answer was about (origin null = from the kiosk). A chat sends it back with the next
+   * question, so "when does it arrive?" stays about that trip. Null when the answer was about no trip.
+   */
+  context: ChatContext | null;
   debug: QuestionDebug;
+}
+
+/** The trip a chat is about: the destination, and the start station when it is not the kiosk. */
+export interface ChatContext {
+  origin: { id: string; name: string } | null;
+  destination: { id: string; name: string };
 }
 
 interface ApiQuestion {
@@ -221,6 +232,7 @@ interface ApiQuestion {
   trip_destination: { id: number; name: string } | null;
   clarify?: boolean;
   choices?: { id: number; name: string }[];
+  context?: { origin: { id: number; name: string } | null; destination: { id: number; name: string } } | null;
   debug?: QuestionDebug;
   error?: string;
 }
@@ -261,6 +273,12 @@ function toQuestionResult(data: ApiQuestion, screenLang: Lang): QuestionResult {
       : null,
     clarify: Boolean(data.clarify),
     choices: (data.choices ?? []).map((c) => ({ id: String(c.id), name: c.name })),
+    context: data.context?.destination
+      ? {
+          origin: data.context.origin ? { id: String(data.context.origin.id), name: data.context.origin.name } : null,
+          destination: { id: String(data.context.destination.id), name: data.context.destination.name },
+        }
+      : null,
     debug: { ...data.debug, ...(data.error ? { error: data.error } : {}) },
   };
 }
@@ -271,7 +289,7 @@ export interface ChatTurn {
   text: string;
 }
 
-/** Most turns sent back: the backend uses the last 6 anyway, and accepts at most 20. */
+/** Most turns sent back: the backend reads the last 10 (and accepts at most 20). */
 const MAX_CHAT_TURNS = 10;
 
 /** Keeps only well-formed turns, trimmed to what the backend accepts. */
@@ -289,13 +307,14 @@ export function cleanChat(history: unknown): ChatTurn[] {
 /**
  * A question at the kiosk, typed or spoken. `destination` = the traveller's trip when they ask about it
  * (after scanning); without it, a trip question ("I need to get to Bern") returns `tripDestination`.
- * `chat`: the conversation so far and the destination already discussed, for follow-up questions.
+ * `chat`: the conversation so far and the trip already discussed (destination, and start station when it
+ * is not the kiosk), for follow-up questions.
  */
 export async function aiQuestion(
   input: { text: string } | { audio: Blob; filename: string },
   lang: Lang,
   trip?: { destination?: string },
-  chat?: { history: ChatTurn[]; contextDestination?: string },
+  chat?: { history: ChatTurn[]; contextDestination?: string; contextOrigin?: string },
 ): Promise<QuestionResult> {
   const cfg = config();
   // About the traveller's trip: their chosen destination, or the scanned ticket's.
@@ -303,6 +322,8 @@ export async function aiQuestion(
   const tips = stationTips(cfg, lang);
   const history = cleanChat(chat?.history);
   const contextDestination = chat?.contextDestination;
+  // A start station only makes sense together with a destination.
+  const contextOrigin = contextDestination ? chat?.contextOrigin : undefined;
   if ('text' in input) {
     const data = await request<ApiQuestion>(
       cfg,
@@ -316,6 +337,7 @@ export async function aiQuestion(
         extra_facts: tips,
         history,
         context_destination: contextDestination,
+        context_origin: contextOrigin,
       }),
     );
     return toQuestionResult(data, lang);
@@ -329,5 +351,6 @@ export async function aiQuestion(
   form.set('extra_facts', JSON.stringify(tips));
   if (history.length) form.set('history', JSON.stringify(history));
   if (contextDestination) form.set('context_destination', contextDestination);
+  if (contextOrigin) form.set('context_origin', contextOrigin);
   return toQuestionResult(await request<ApiQuestion>(cfg, '/question/voice', { method: 'POST', body: form }), lang);
 }

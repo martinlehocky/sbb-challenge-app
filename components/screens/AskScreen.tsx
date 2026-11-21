@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import type { ChatTurn, QuestionDebug } from '@/lib/ai';
+import type { ChatContext, ChatTurn, QuestionDebug } from '@/lib/ai';
 import { getMessages } from '@/lib/i18n/messages';
 import { withScenario } from '@/lib/scenario';
 import type { Lang, Scenario } from '@/lib/types';
@@ -34,6 +34,8 @@ interface QuestionResponse {
   tripDestination: { id: string; name: string } | null;
   clarify?: boolean;
   choices?: { id: string; name: string }[];
+  /** The trip this answer was about, to send back with the next question (null: no trip, keep the old one). */
+  context?: ChatContext | null;
   debug?: QuestionDebug;
 }
 
@@ -59,8 +61,17 @@ type Phase = 'idle' | 'listening' | 'thinking';
 
 interface SavedChat {
   messages: ChatMessage[];
-  context: Trip | null;
+  context: ChatContext | null;
   at: number;
+}
+
+/** Context as saved by any version: older ones stored only the destination ({id, name}). */
+function readContext(value: unknown): ChatContext | null {
+  if (!value || typeof value !== 'object') return null;
+  const v = value as Partial<ChatContext> & Partial<Trip>;
+  if (v.destination?.id) return { origin: v.origin?.id ? v.origin : null, destination: v.destination };
+  if (typeof v.id === 'string' && typeof v.name === 'string') return { origin: null, destination: { id: v.id, name: v.name } };
+  return null;
 }
 
 function extensionFor(mime: string): string {
@@ -86,7 +97,7 @@ function loadChat(key: string): SavedChat | null {
     const messages = saved.messages.map((m) =>
       m.role === 'kiosk' ? { ...m, choices: Array.isArray(m.choices) ? m.choices : [], lang: m.lang ?? 'en' } : m,
     );
-    return { ...saved, messages };
+    return { ...saved, messages, context: readContext(saved.context) };
   } catch {
     return null;
   }
@@ -125,8 +136,11 @@ export function AskScreen({
   const canAsk = status?.ai ?? false;
   const storageKey = `sbb-kiosk-chat:${aboutTrip ? 'trip' : 'help'}`;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  /** Destination found earlier in this conversation ("I need to get to Bern"), for follow-up questions. */
-  const [context, setContext] = useState<Trip | null>(null);
+  /**
+   * The trip this conversation is about (the last answer that was about a trip: "I need to get to Bern",
+   * "from Winterthur to Chur", "the first one"), sent with every follow-up question.
+   */
+  const [context, setContext] = useState<ChatContext | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [text, setText] = useState('');
   const recorder = useRef<MediaRecorder | null>(null);
@@ -233,9 +247,18 @@ export function AskScreen({
     return m.peak;
   };
 
-  /** The conversation so far, as sent to the AI (kiosk hints are left out). */
+  /**
+   * The conversation so far, as sent to the AI (kiosk hints are left out). When the kiosk asked back, the
+   * stations it offered are added, so "the first one" or "Basel" can be understood.
+   */
   const historyOf = (list: ChatMessage[]): ChatTurn[] =>
-    list.flatMap((m) => (m.role === 'notice' ? [] : [{ role: m.role, text: m.text }]));
+    list.flatMap((m): ChatTurn[] => {
+      if (m.role === 'notice') return [];
+      if (m.role === 'kiosk' && m.choices.length) {
+        return [{ role: 'kiosk', text: `${m.text} (Options: ${m.choices.map((c) => c.name).join(', ')})` }];
+      }
+      return [{ role: m.role, text: m.text }];
+    });
 
   const ask = async (body: FormData, info: AskDebugState, via: 'voice' | 'text') => {
     touch();
@@ -247,7 +270,8 @@ export function AskScreen({
       body.set('about', 'trip');
       if (scenario.to) body.set('to', scenario.to);
     } else if (context) {
-      body.set('context', context.id);
+      body.set('context', context.destination.id);
+      if (context.origin) body.set('context_origin', context.origin.id);
     }
     const started = performance.now();
     try {
@@ -276,8 +300,9 @@ export function AskScreen({
         trip,
         choices: data.clarify ? (data.choices ?? []) : [],
       });
-      // The trip found becomes the conversation's trip for follow-ups ("about my trip" keeps the ticket's).
-      if (trip && !aboutTrip) setContext(trip);
+      // The trip this answer was about becomes the conversation's trip for follow-ups. An answer about no trip
+      // ("where can I get a coffee?") keeps the old one. "About my trip" keeps the ticket's trip.
+      if (data.context && !aboutTrip) setContext(data.context);
     } catch (err) {
       console.error('[ask] failed:', err);
       setLastDebug((d) => (d && !d.clientError ? { ...d, clientError: (err as Error).message } : d));
@@ -507,9 +532,12 @@ function Message({
       </li>
     );
   }
+  // With buttons ("Show my next train · <station>", station choices) the bubble may use the full width,
+  // so long station names are not cut off with "…".
+  const withActions = Boolean(m.trip) || m.choices.length > 0;
   return (
     <li className={styles.theirs}>
-      <div className={`${styles.bubble} ${styles.kiosk}`}>
+      <div className={`${styles.bubble} ${styles.kiosk} ${withActions ? styles.withActions : ''}`}>
         <span className={styles.who}>
           {t.welcome.product}
           {m.answered && <AiChip label={t.ai.label} />}
