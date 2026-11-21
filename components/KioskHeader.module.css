@@ -1,0 +1,58 @@
+.header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sbb-spacing-fixed-4x);
+  min-height: 4.5rem;
+  padding: var(--sbb-spacing-fixed-3x) var(--sbb-spacing-fixed-6x);
+  border-block-end: var(--sbb-border-width-1x) solid var(--sbb-border-color-5);
+}
+
+.start,
+.end {
+  display: flex;
+  flex: 1 0 auto;
+  align-items: center;
+}
+
+.start {
+  gap: var(--sbb-spacing-fixed-4x);
+  justify-content: flex-start;
+}
+
+/* Header back buttons: same height, less side padding than the big actions. */
+.start :global(sbb-secondary-button-link) {
+  --sbb-button-padding-inline: var(--sbb-spacing-fixed-6x);
+}
+
+.center {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--sbb-spacing-fixed-2x);
+  min-width: 0;
+  color: var(--sbb-color-3);
+  font-size: var(--sbb-text-font-size-s);
+  font-weight: bold;
+  line-height: var(--sbb-typo-line-height-heading);
+  text-align: center;
+}
+
+.end {
+  gap: var(--sbb-spacing-fixed-4x);
+  justify-content: flex-end;
+}
+
+.time {
+  font-size: var(--sbb-heading-font-size-4);
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* SBB clock: min. 75 px, and more than 20 % of its diameter kept free around it. */
+.clock {
+  flex: none;
+  width: 3rem;
+  height: 3rem;
+}

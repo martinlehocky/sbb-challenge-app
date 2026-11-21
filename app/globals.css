@@ -1,0 +1,29 @@
+@import "@sbb-esta/lyne-elements/standard-theme.css";
+@import "@sbb-esta/lyne-elements-experimental/standard-theme.css";
+@import "@sbb-esta/lyne-elements/font-characters-extension.css";
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--sbb-background-color-1);
+  color: var(--sbb-color-1);
+}
+
+/*
+ * Kiosk pages: the Lyne tokens are rem-based, so a larger root font size
+ * scales every component up for the 1080 x 1920 portrait canvas
+ * (1rem = 32px). Only applies while a kiosk canvas is on the page.
+ */
+html:has(.sbb-kiosk-canvas) {
+  font-size: 200%;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}

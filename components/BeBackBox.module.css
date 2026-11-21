@@ -1,0 +1,32 @@
+.box {
+  color: var(--sbb-color-success);
+  --sbb-notification-padding-inline: var(--sbb-spacing-fixed-5x);
+  --sbb-notification-content-padding-inline: var(--sbb-spacing-fixed-3x) var(--sbb-spacing-fixed-2x);
+}
+
+.train,
+.backBy {
+  display: block;
+  color: var(--sbb-color-success);
+  line-height: var(--sbb-typo-line-height-heading);
+}
+
+.train {
+  font-weight: bold;
+}
+
+.l .train {
+  font-size: var(--sbb-text-font-size-s);
+}
+
+.l .backBy {
+  font-size: var(--sbb-heading-font-size-5);
+}
+
+.m .train {
+  font-size: var(--sbb-text-font-size-s);
+}
+
+.m .backBy {
+  font-size: var(--sbb-text-font-size-l);
+}

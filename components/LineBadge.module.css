@@ -1,0 +1,17 @@
+.badge {
+  flex: none;
+  vertical-align: middle;
+  --sbb-icon-svg-width: auto;
+}
+
+.s {
+  --sbb-icon-svg-height: 1.25rem;
+}
+
+.m {
+  --sbb-icon-svg-height: 1.75rem;
+}
+
+.l {
+  --sbb-icon-svg-height: 2.5rem;
+}

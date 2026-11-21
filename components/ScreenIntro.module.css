@@ -1,0 +1,21 @@
+.intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sbb-spacing-fixed-3x);
+}
+
+.center {
+  align-items: center;
+  text-align: center;
+}
+
+.title {
+  margin: 0;
+}
+
+.lead {
+  margin: 0;
+  color: var(--sbb-color-3);
+  font-size: var(--sbb-text-font-size-m);
+  line-height: var(--sbb-typo-line-height-heading);
+}

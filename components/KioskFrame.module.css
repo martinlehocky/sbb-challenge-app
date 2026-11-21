@@ -1,0 +1,121 @@
+.stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background-color: var(--sbb-background-color-4);
+}
+
+.viewport {
+  position: relative;
+  flex: none;
+  overflow: hidden;
+  box-shadow: 0 0 var(--sbb-spacing-fixed-8x) var(--sbb-shadow-color-soft-2);
+}
+
+.canvas {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  display: flex;
+  flex-direction: column;
+  width: 1080px;
+  height: 1920px;
+  overflow: hidden;
+  transform-origin: 0 0;
+  background-color: var(--sbb-background-color-1);
+  color: var(--sbb-color-1);
+  font-family: var(--sbb-typo-font-family);
+  font-size: var(--sbb-text-font-size-s);
+  line-height: var(--sbb-typo-line-height-heading);
+
+  /*
+   * Pin the responsive tokens to the "large" breakpoint so the canvas looks
+   * the same on a laptop (scaled) and on the real 1080 px wide kiosk.
+   */
+  --sbb-heading-font-size-1: var(--sbb-typo-scale-3-5x);
+  --sbb-heading-font-size-2: var(--sbb-typo-scale-2-5x);
+  --sbb-heading-font-size-3: var(--sbb-typo-scale-2x);
+  --sbb-heading-font-size-4: var(--sbb-typo-scale-1-5x);
+  --sbb-heading-font-size-5: var(--sbb-typo-scale-1-25x);
+  --sbb-heading-font-size-6: var(--sbb-typo-scale-default);
+  --sbb-text-font-size-xl: var(--sbb-typo-scale-1-5x);
+  --sbb-text-font-size-l: var(--sbb-typo-scale-1-25x);
+  --sbb-text-font-size-m: var(--sbb-typo-scale-1-125x);
+  --sbb-text-font-size-s: var(--sbb-typo-scale-default);
+  --sbb-text-font-size-xs: var(--sbb-typo-scale-0-875x);
+  --sbb-spacing-responsive-xxxs: var(--sbb-spacing-responsive-xxxs-large);
+  --sbb-spacing-responsive-xxs: var(--sbb-spacing-responsive-xxs-large);
+  --sbb-spacing-responsive-xs: var(--sbb-spacing-responsive-xs-large);
+  --sbb-spacing-responsive-s: var(--sbb-spacing-responsive-s-large);
+  --sbb-spacing-responsive-m: var(--sbb-spacing-responsive-m-large);
+  --sbb-spacing-responsive-l: var(--sbb-spacing-responsive-l-large);
+  --sbb-spacing-responsive-xl: var(--sbb-spacing-responsive-xl-large);
+  --sbb-spacing-responsive-xxl: var(--sbb-spacing-responsive-xxl-large);
+}
+
+/* Slotted / standalone icons follow the (scaled) rem-based icon sizes. */
+.canvas :global(sbb-icon[name$='-small']) {
+  --sbb-icon-svg-width: var(--sbb-size-icon-ui-small);
+  --sbb-icon-svg-height: var(--sbb-size-icon-ui-small);
+}
+
+.canvas :global(sbb-icon[name$='-medium']) {
+  --sbb-icon-svg-width: var(--sbb-size-icon-ui-medium);
+  --sbb-icon-svg-height: var(--sbb-size-icon-ui-medium);
+}
+
+.canvas :global(sbb-icon[name$='-large']) {
+  --sbb-icon-svg-width: var(--sbb-size-icon-ui-large);
+  --sbb-icon-svg-height: var(--sbb-size-icon-ui-large);
+}
+
+/* Icons rendered inside Lyne components follow the scaled sizes too. */
+.canvas {
+  --sbb-notification-icon-size: var(--sbb-size-icon-ui-small);
+}
+
+.canvas :global(sbb-notification) {
+  --sbb-notification-padding-block: var(--sbb-spacing-fixed-4x);
+  line-height: var(--sbb-typo-line-height-heading);
+}
+
+.canvas
+  :global(
+    :is(sbb-button, sbb-button-link, sbb-secondary-button, sbb-secondary-button-link, sbb-accent-button-link)
+  ) {
+  --sbb-icon-svg-width: var(--sbb-size-icon-ui-small);
+  --sbb-icon-svg-height: var(--sbb-size-icon-ui-small);
+}
+
+/* Large kiosk buttons: 36 px labels (the button label uses the xs text size). */
+.canvas
+  :global(
+    :is(sbb-button, sbb-button-link, sbb-secondary-button, sbb-secondary-button-link)[size='l']
+  ) {
+  --sbb-text-font-size-xs: var(--sbb-typo-scale-1-125x);
+}
+
+.canvas p {
+  margin: 0;
+}
+
+.main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--sbb-spacing-fixed-6x);
+  min-height: 0;
+  padding: var(--sbb-spacing-fixed-4x) var(--sbb-spacing-fixed-8x) var(--sbb-spacing-fixed-2x);
+  overflow-y: auto;
+}
+
+.footer {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--sbb-spacing-fixed-4x);
+  padding: var(--sbb-spacing-fixed-2x) var(--sbb-spacing-fixed-8x) var(--sbb-spacing-fixed-8x);
+}

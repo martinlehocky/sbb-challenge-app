@@ -1,0 +1,12 @@
+.stepFree {
+  margin-inline-start: var(--sbb-spacing-fixed-2x);
+  vertical-align: middle;
+}
+
+.help {
+  margin: 0;
+}
+
+.helpBox {
+  font-size: var(--sbb-text-font-size-m);
+}

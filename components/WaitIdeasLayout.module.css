@@ -1,0 +1,12 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sbb-spacing-fixed-2x);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fullWidth {
+  width: 100%;
+}

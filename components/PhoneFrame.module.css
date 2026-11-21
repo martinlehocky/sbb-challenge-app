@@ -1,0 +1,61 @@
+.stage {
+  display: flex;
+  justify-content: center;
+  min-height: 100dvh;
+  background-color: var(--sbb-background-color-1);
+}
+
+.phone {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 390px;
+  min-height: 100dvh;
+  background-color: var(--sbb-background-color-1);
+  color: var(--sbb-color-1);
+  font-family: var(--sbb-typo-font-family);
+  font-size: var(--sbb-text-font-size-m);
+
+  /* Pin responsive tokens to their mobile values, also on a wide desktop. */
+  --sbb-heading-font-size-1: var(--sbb-typo-scale-2-5x);
+  --sbb-heading-font-size-2: var(--sbb-typo-scale-2x);
+  --sbb-heading-font-size-3: var(--sbb-typo-scale-1-5x);
+  --sbb-heading-font-size-4: var(--sbb-typo-scale-1-25x);
+  --sbb-heading-font-size-5: var(--sbb-typo-scale-1-125x);
+  --sbb-heading-font-size-6: var(--sbb-typo-scale-0-875x);
+  --sbb-text-font-size-xl: var(--sbb-typo-scale-1-25x);
+  --sbb-text-font-size-l: var(--sbb-typo-scale-1-125x);
+  --sbb-text-font-size-m: var(--sbb-typo-scale-default);
+  --sbb-text-font-size-s: var(--sbb-typo-scale-0-875x);
+  --sbb-text-font-size-xs: var(--sbb-typo-scale-0-75x);
+  --sbb-spacing-responsive-xxxs: var(--sbb-spacing-responsive-xxxs-zero);
+  --sbb-spacing-responsive-xxs: var(--sbb-spacing-responsive-xxs-zero);
+  --sbb-spacing-responsive-xs: var(--sbb-spacing-responsive-xs-zero);
+  --sbb-spacing-responsive-s: var(--sbb-spacing-responsive-s-zero);
+  --sbb-spacing-responsive-m: var(--sbb-spacing-responsive-m-zero);
+  --sbb-spacing-responsive-l: var(--sbb-spacing-responsive-l-zero);
+  --sbb-spacing-responsive-xl: var(--sbb-spacing-responsive-xl-zero);
+  --sbb-spacing-responsive-xxl: var(--sbb-spacing-responsive-xxl-zero);
+}
+
+.phone p {
+  margin: 0;
+}
+
+/* Desktop: show it as a phone, 390 x 844. */
+@media (width >= 37.5rem) {
+  .stage {
+    align-items: center;
+    padding: var(--sbb-spacing-fixed-8x);
+    background-color: var(--sbb-background-color-4);
+  }
+
+  .phone {
+    min-height: 844px;
+    max-height: 844px;
+    overflow-y: auto;
+    border: var(--sbb-border-width-4x) solid var(--sbb-border-color-1);
+    border-radius: var(--sbb-border-radius-16x);
+    box-shadow: 0 0 var(--sbb-spacing-fixed-8x) var(--sbb-shadow-color-soft-2);
+  }
+}

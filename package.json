@@ -1,0 +1,28 @@
+{
+  "name": "sbb-challenge-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@sbb-esta/lyne-elements": "5.13.3",
+    "@sbb-esta/lyne-elements-experimental": "5.13.3",
+    "@sbb-esta/lyne-react": "5.13.3",
+    "@sbb-esta/lyne-react-experimental": "5.13.3",
+    "next": "16.4.6",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.6",
+    "typescript": "^5"
+  }
+}
