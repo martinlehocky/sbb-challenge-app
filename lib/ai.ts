@@ -215,13 +215,45 @@ export interface QuestionResult {
    * question, so "when does it arrive?" stays about that trip. Null when the answer was about no trip.
    */
   context: ChatContext | null;
+  /** A trip with stops on the way ("first Interlaken, then Bern"): every part, the stays, ideas per stop. */
+  route: ChatRoute | null;
   debug: QuestionDebug;
 }
 
-/** The trip a chat is about: the destination, and the start station when it is not the kiosk. */
+type Place = { id: string; name: string };
+
+/**
+ * The trip a chat is about: the destination, and the start station when it is not the kiosk.
+ * `via` / `stays`: stops on the way and the minutes to stay at each (null = not said yet).
+ */
 export interface ChatContext {
-  origin: { id: string; name: string } | null;
-  destination: { id: string; name: string };
+  origin: Place | null;
+  destination: Place;
+  via?: Place[];
+  stays?: (number | null)[];
+}
+
+/** One train of a route part. Times are ISO strings in Swiss time. */
+export interface RouteTrain {
+  line: string | null;
+  direction: string | null;
+  from: { name: string; platform: string | null };
+  to: { name: string; platform: string | null };
+  departure: string;
+  arrival: string;
+}
+
+/** A trip with stops: start -> stop(s) -> destination, each part leaving after the stay at the stop before. */
+export interface ChatRoute {
+  stops: Place[];
+  stays: (number | null)[];
+  /** One per part that could be planned (a part after a stay not known yet is missing). */
+  parts: { from: Place; to: Place; departAfter: string; trains: RouteTrain[] | null }[];
+  /** The kiosk asks how long to stay at this stop, with these stays (minutes) as buttons. */
+  askStay: { index: number; stop: Place; options: number[] } | null;
+  /** Things to do at each stop (fitting the stay, when known). */
+  ideas: { stop: Place; ideas: { title: string; minutes: number }[] }[];
+  complete: boolean;
 }
 
 interface ApiQuestion {
@@ -232,9 +264,67 @@ interface ApiQuestion {
   trip_destination: { id: number; name: string } | null;
   clarify?: boolean;
   choices?: { id: number; name: string }[];
-  context?: { origin: { id: number; name: string } | null; destination: { id: number; name: string } } | null;
+  context?: {
+    origin: ApiPlace | null;
+    destination: ApiPlace;
+    via?: ApiPlace[];
+    stays?: (number | null)[];
+  } | null;
+  route?: ApiRoute | null;
   debug?: QuestionDebug;
   error?: string;
+}
+
+type ApiPlace = { id: number; name: string };
+
+interface ApiTrain {
+  line: string | null;
+  category: string | null;
+  direction: string | null;
+  from: { name: string; platform: string | null };
+  to: { name: string; platform: string | null };
+  departure: string;
+  arrival: string;
+}
+
+interface ApiRoute {
+  stops: ApiPlace[];
+  stays: (number | null)[];
+  legs: { from: ApiPlace; to: ApiPlace; depart_after: string; journey: { legs: ApiTrain[] } | null }[];
+  ask_stay: { index: number; stop: ApiPlace; options: number[] } | null;
+  ideas: { stop: ApiPlace; ideas: { title: string; minutes: number }[] }[];
+  complete: boolean;
+}
+
+const place = (p: ApiPlace): Place => ({ id: String(p.id), name: p.name });
+const stayOf = (x: unknown): number | null => (typeof x === 'number' && Number.isInteger(x) ? x : null);
+
+function toRoute(r: ApiRoute, lang: Lang): ChatRoute {
+  return {
+    stops: r.stops.map(place),
+    stays: r.stays.map(stayOf),
+    parts: r.legs.map((leg) => ({
+      from: place(leg.from),
+      to: place(leg.to),
+      departAfter: leg.depart_after,
+      trains: leg.journey
+        ? leg.journey.legs.map((t) => ({
+            line: t.line || t.category,
+            direction: t.direction,
+            from: t.from,
+            to: t.to,
+            departure: t.departure,
+            arrival: t.arrival,
+          }))
+        : null,
+    })),
+    askStay: r.ask_stay ? { index: r.ask_stay.index, stop: place(r.ask_stay.stop), options: r.ask_stay.options } : null,
+    ideas: r.ideas.map((i) => ({
+      stop: place(i.stop),
+      ideas: i.ideas.map((x) => ({ title: swiss(x.title, lang), minutes: x.minutes })),
+    })),
+    complete: r.complete,
+  };
 }
 
 /**
@@ -275,10 +365,14 @@ function toQuestionResult(data: ApiQuestion, screenLang: Lang): QuestionResult {
     choices: (data.choices ?? []).map((c) => ({ id: String(c.id), name: c.name })),
     context: data.context?.destination
       ? {
-          origin: data.context.origin ? { id: String(data.context.origin.id), name: data.context.origin.name } : null,
-          destination: { id: String(data.context.destination.id), name: data.context.destination.name },
+          origin: data.context.origin ? place(data.context.origin) : null,
+          destination: place(data.context.destination),
+          ...(data.context.via?.length
+            ? { via: data.context.via.map(place), stays: data.context.via.map((_, i) => stayOf(data.context?.stays?.[i])) }
+            : {}),
         }
       : null,
+    route: data.route ? toRoute(data.route, lang) : null,
     debug: { ...data.debug, ...(data.error ? { error: data.error } : {}) },
   };
 }
@@ -314,7 +408,16 @@ export async function aiQuestion(
   input: { text: string } | { audio: Blob; filename: string },
   lang: Lang,
   trip?: { destination?: string },
-  chat?: { history: ChatTurn[]; contextDestination?: string; contextOrigin?: string },
+  chat?: {
+    history: ChatTurn[];
+    contextDestination?: string;
+    contextOrigin?: string;
+    /** Stops on the way of the trip discussed, and the minutes to stay at each (null = not said yet). */
+    contextVia?: string[];
+    contextStays?: (number | null)[];
+    /** A stay the traveller picked with a button (minutes). */
+    stay?: number;
+  },
 ): Promise<QuestionResult> {
   const cfg = config();
   // About the traveller's trip: their chosen destination, or the scanned ticket's.
@@ -324,6 +427,10 @@ export async function aiQuestion(
   const contextDestination = chat?.contextDestination;
   // A start station only makes sense together with a destination.
   const contextOrigin = contextDestination ? chat?.contextOrigin : undefined;
+  // Stops only make sense with the destination; stays are aligned with the stops.
+  const contextVia = contextDestination ? (chat?.contextVia ?? []).slice(0, 3) : [];
+  const contextStays = contextVia.map((_, i) => stayOf(chat?.contextStays?.[i]));
+  const stay = chat?.stay;
   if ('text' in input) {
     const data = await request<ApiQuestion>(
       cfg,
@@ -338,6 +445,9 @@ export async function aiQuestion(
         history,
         context_destination: contextDestination,
         context_origin: contextOrigin,
+        context_via: contextVia,
+        context_stays: contextStays,
+        stay_minutes: stay,
       }),
     );
     return toQuestionResult(data, lang);
@@ -352,5 +462,10 @@ export async function aiQuestion(
   if (history.length) form.set('history', JSON.stringify(history));
   if (contextDestination) form.set('context_destination', contextDestination);
   if (contextOrigin) form.set('context_origin', contextOrigin);
+  if (contextVia.length) {
+    form.set('context_via', JSON.stringify(contextVia));
+    form.set('context_stays', JSON.stringify(contextStays));
+  }
+  if (stay) form.set('stay_minutes', String(stay));
   return toQuestionResult(await request<ApiQuestion>(cfg, '/question/voice', { method: 'POST', body: form }), lang);
 }

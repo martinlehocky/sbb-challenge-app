@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import json
 from dataclasses import replace
+from datetime import datetime, timedelta
 
 import httpx
 import pytest
@@ -12,6 +13,8 @@ from fastapi.testclient import TestClient
 from sbb_backend.ai import AIDisabled, AIError, TogetherClient
 from sbb_backend.ai.together import parse_json_content
 from sbb_backend.api import create_app
+from sbb_backend.services.stations import Station
+from sbb_backend.services.stopover import StopIdeas
 
 from .conftest import A, B, D
 
@@ -709,3 +712,151 @@ def test_same_destination_keeps_the_remembered_start(client, fake):
     assert body["debug"]["trip_plan"] == "conversation"
     assert any(f.startswith("Trip asked about: Beta to Delta") for f in body["debug"]["facts"])
     assert body["trip_destination"] is None
+
+
+# ---------------------------------------------------------------- trips with a stop on the way
+
+ROUTE_INTENT = {"origin": None, "destinations": ["Delta"], "via": ["Beta"], "language": "en"}
+NO_IDEAS = {"ideas": []}  # the AI's ideas for Beta (no hand-checked ideas for the fixture stations)
+
+
+def test_trip_with_a_stop_asks_how_long_to_stay(client, fake):
+    fake.chat_answers = [ROUTE_INTENT, {"ideas": [{"title": "Walk through the village", "minutes": 45}]}]
+    body = _ask(client, "First Beta, then Delta")
+    assert body["debug"]["trip_plan"] == "route" and body["answered"] is True and body["clarify"] is False
+    assert body["answer"] == "Your route: Alpha → Beta → Delta. How long would you like to stay in Beta?"
+    route = body["route"]
+    assert [s["name"] for s in route["stops"]] == ["Alpha", "Beta", "Delta"] and route["stays"] == [None]
+    assert route["ask_stay"] == {"index": 0, "stop": route["stops"][1], "options": [60, 120, 180, 300]}
+    assert len(route["legs"]) == 1 and route["legs"][0]["journey"]["legs"][0]["to"]["name"] == "Beta"
+    assert route["complete"] is False and body["trip_destination"] is None
+    assert route["ideas"] == [{"stop": route["stops"][1], "stay": None,
+                               "ideas": [{"title": "Walk through the village", "minutes": 45, "source": "ai"}]}]
+    assert body["context"]["destination"]["name"] == "Delta" and body["context"]["origin"] is None
+    assert [v["name"] for v in body["context"]["via"]] == ["Beta"] and body["context"]["stays"] == [None]
+    assert len(_chat_calls(fake)) == 2  # trip + ideas: the answer is a fixed sentence, no AI wording
+
+
+def test_picked_stay_plans_the_full_route(client, fake):
+    fake.chat_answers = [NO_TRIP, NO_IDEAS]
+    body = _ask(client, "1 h", context_destination=str(D), context_via=[str(B)], context_stays=[None],
+                stay_minutes=60, history=[{"role": "traveller", "text": "First Beta, then Delta"}])
+    route = body["route"]
+    assert route["stays"] == [60] and route["complete"] is True and route["ask_stay"] is None
+    first, second = route["legs"]
+    assert first["from"]["name"] == "Alpha" and first["to"]["name"] == "Beta"
+    assert second["from"]["name"] == "Beta" and second["to"]["name"] == "Delta"
+    arrived = datetime.fromisoformat(first["journey"]["arrival"])
+    assert datetime.fromisoformat(second["depart_after"]) == arrived + timedelta(minutes=60)
+    assert datetime.fromisoformat(second["journey"]["departure"]) >= arrived + timedelta(minutes=60)
+    dep, arr = first["journey"]["departure"][11:16], second["journey"]["arrival"][11:16]
+    assert body["answer"] == (f"Your route: Alpha → Beta (1 h) → Delta. You leave Alpha at {dep} and arrive in "
+                              f"Delta at {arr}.")
+    assert body["trip_destination"]["name"] == "Beta"  # "Show my next train": the first part
+    assert body["context"]["stays"] == [60]
+
+
+def test_stay_said_in_words_is_used(client, fake):
+    fake.chat_answers = [{**ROUTE_INTENT, "stay_minutes": 120}, NO_IDEAS]
+    body = _ask(client, "Two hours please", context_destination=str(D), context_via=[str(B)], context_stays=[None],
+                history=[{"role": "traveller", "text": "First Beta, then Delta"}])
+    assert body["route"]["stays"] == [120] and body["route"]["complete"] is True
+    assert "Beta (2 h)" in body["answer"]
+
+
+def test_after_a_place_means_a_stop_not_the_start(client, fake):
+    """'Après Interlaken, j'aimerais aller à Bern': the AI may call Interlaken the origin; it is the first stop."""
+    fake.chat_answers = [{"origin": "Beta", "destinations": ["Delta"], "language": "fr"}, NO_IDEAS]
+    body = _ask(client, "Après Beta, j'aimerais aller à Delta.", lang="fr")
+    assert body["debug"]["trip_plan"] == "route"
+    assert [s["name"] for s in body["route"]["stops"]] == ["Alpha", "Beta", "Delta"]
+    assert body["answer"] == ("Votre itinéraire : Alpha → Beta → Delta. Combien de temps voulez-vous rester "
+                              "à Beta ?")
+
+
+def test_question_about_the_route_is_answered_from_every_part(client, fake):
+    fake.chat_answers = [NO_TRIP, NO_IDEAS, {"language": "en", "answer": "Platform 2.", "answered": True}]
+    body = _ask(client, "Which platform?", context_destination=str(D), context_via=[str(B)], context_stays=[60],
+                history=[{"role": "traveller", "text": "First Beta, then Delta"}])
+    facts = body["debug"]["facts"]
+    assert "The traveller plans a trip with stops on the way: Alpha → Beta (1 h) → Delta." in facts
+    assert any(f.startswith("Part 1 of the route, Alpha to Beta:") for f in facts)
+    assert any(f.startswith("Part 2 of the route, Beta to Delta:") for f in facts)
+    assert body["answer"] == "Platform 2." and body["route"] is None  # no new route card for a question
+    assert body["context"]["stays"] == [60]
+
+
+def test_missing_stay_is_asked_by_the_ai_on_other_questions(client, fake):
+    fake.chat_answers = [NO_TRIP, NO_IDEAS, {"language": "en", "answer": "How long will you stay?", "answered": True}]
+    body = _ask(client, "When do I arrive?", context_destination=str(D), context_via=[str(B)], context_stays=[None])
+    assert "The traveller has not said yet how long they will stay in Beta; ask them." in body["debug"]["facts"]
+
+
+def test_new_destination_ends_the_route(client, fake):
+    fake.chat_answers = [{"origin": None, "destinations": ["Gamma"], "language": "en", "new_trip": True},
+                         {"language": "en", "answer": "Trains run to Gamma.", "answered": True}]
+    body = _ask(client, "What about Gamma instead?", context_destination=str(D), context_via=[str(B)],
+                context_stays=[60])
+    assert body["debug"]["trip_plan"] == "trip" and body["route"] is None
+    assert set(body["context"]) == {"origin", "destination"} and body["context"]["destination"]["name"] == "Gamma"
+
+
+def test_unknown_stop_is_explained_not_planned(client, fake):
+    fake.chat_answers = [{"origin": None, "destinations": ["Delta"], "via": ["Atlantis"], "language": "en"},
+                         {"language": "en", "answer": "We cannot plan Atlantis.", "answered": True}]
+    body = _ask(client, "First Atlantis, then Delta")
+    assert body["debug"]["trip_plan"] == "trip" and body["route"] is None
+    assert any('asked about "Atlantis"' in f for f in body["debug"]["facts"])
+
+
+def test_no_train_after_a_long_stay(client, fake):
+    fake.chat_answers = [NO_TRIP, NO_IDEAS]
+    body = _ask(client, "5 h", at="2026-09-10T21:00:00+02:00", context_destination=str(D), context_via=[str(B)],
+                context_stays=[None], stay_minutes=300)
+    route = body["route"]
+    assert route["legs"][1]["journey"] is None and route["legs"][1]["status"] == "no_connection"
+    assert route["complete"] is False and body["trip_destination"] is None
+    assert body["answer"].startswith(
+        "Your route: Alpha → Beta (5 h) → Delta. There is no train from Beta to Delta after 02:10 today.")
+    assert body["answer"].endswith("Please choose a shorter stay, or ask at the info point.")
+
+
+def test_route_context_must_be_valid(client, fake):
+    fake.chat_answers = [NO_TRIP, {"language": "en", "answer": "Hello.", "answered": True}]
+    body = _ask(client, "Hello", context_destination=str(D), context_via=["9999999"], context_stays=[60])
+    assert body["debug"]["trip_plan"] != "route"  # an unknown stop: the route is forgotten
+    bad_stay = {"question": "x", "station": str(A), "stay_minutes": 2}
+    assert client.post("/api/v1/question", json=bad_stay).status_code == 422
+    too_many = {"question": "x", "station": str(A), "context_via": ["1", "2", "3", "4"]}
+    assert client.post("/api/v1/question", json=too_many).status_code == 422
+
+
+def test_spoken_answer_to_the_stay_question(client, fake):
+    fake.chat_answers = [NO_TRIP, NO_IDEAS]
+    r = client.post("/api/v1/question/voice", files={"file": ("q.webm", b"x" * 2000, "audio/webm")},
+                    data={"station": str(A), "at": AT, "context_destination": str(D),
+                          "context_via": json.dumps([str(B)]), "context_stays": json.dumps([None]),
+                          "stay_minutes": "120"})
+    body = r.json()
+    assert r.status_code == 200 and body["route"]["stays"] == [120] and body["route"]["complete"] is True
+
+
+def test_curated_ideas_fit_the_stay():
+    interlaken = Station(8507493, "Interlaken West", None, None, None, "Interlaken", True, None)
+    ideas = StopIdeas(None)
+    assert [i["minutes"] for i in ideas.for_stop(interlaken, None, "fr")] == [45, 120, 150, 360]
+    assert [i["minutes"] for i in ideas.for_stop(interlaken, 120, "de")] == [45, 120]
+    assert ideas.for_stop(interlaken, 120, "de")[1]["title"].startswith("Standseilbahn auf den Harder Kulm")
+    other = Station(8500001, "Alpha", None, None, None, None, True, None)
+    assert ideas.for_stop(other, None, "en") == []  # no AI: no ideas, never an error
+
+
+def test_station_on_the_way_is_about_the_route(client, fake):
+    """"Do I change in Gamma?" on the route Alpha -> Beta -> Delta (Beta to Delta passes Gamma): not a new trip."""
+    fake.chat_answers = [{"origin": None, "destinations": ["Gamma"], "language": "en", "new_trip": False}, NO_IDEAS,
+                         {"language": "en", "answer": "No, you stay on the train.", "answered": True}]
+    body = _ask(client, "Do I change in Gamma?", at="2026-09-10T10:30:00+02:00", context_destination=str(D),
+                context_via=[str(B)], context_stays=[60])
+    assert body["debug"]["trip_plan"] == "route" and body["route"] is None
+    assert any(f.startswith("Part 2 of the route, Beta to Delta:") for f in body["debug"]["facts"])
+    assert [v["name"] for v in body["context"]["via"]] == ["Beta"]

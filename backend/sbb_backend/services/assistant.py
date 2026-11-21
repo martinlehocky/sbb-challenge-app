@@ -12,10 +12,12 @@ import time
 from datetime import datetime
 
 from ..ai import AIError, TogetherClient
-from ..timeutil import ZURICH
+from ..timeutil import ZURICH, to_iso
 from .advisor import Advisor
 from .disruptions import DisruptionStore
 from .stations import Station, StationIndex
+from .stopover import (ASK_STAFF, ASK_STAY, FULL_ROUTE, MAX_STOPS, NO_TRAIN, SHORTER_STAY, STAY_OPTIONS, StopIdeas,
+                       clean_stay, route_text, stay_label)
 from .voice import conversation_text, understand_trip
 
 LANG_NAMES = {"en": "English", "de": "German", "fr": "French", "it": "Italian"}
@@ -31,6 +33,8 @@ def lang_code(value: object) -> str | None:
     return next((code for code, name in LANG_NAMES.items() if name.lower() == v), None)
 _TIME = re.compile(r"\b([01]?\d|2[0-3])[:.h]([0-5]\d)\b")
 MAX_EXTRA_FACTS = 30
+# After a stop, a train leaving more than this long after the stay ends does not count (it would be tomorrow).
+MAX_WAIT_AFTER_STAY_S = 3 * 3600
 
 CANT_ANSWER = {
     "en": "Sorry, we cannot answer that reliably. Please ask staff at the info point.",
@@ -138,11 +142,14 @@ class Assistant:
         self.advisor = advisor
         self.ai = ai
         self.radius_m = radius_m
+        self.ideas = StopIdeas(ai)
 
     def answer(self, question: str, kiosk: Station, at: int, lang: str = "en",
                destination: Station | None = None, extra_facts: list[str] | None = None,
                spoken_lang: str | None = None, history: list[dict] | None = None,
-               context_destination: Station | None = None, context_origin: Station | None = None) -> dict:
+               context_destination: Station | None = None, context_origin: Station | None = None,
+               context_via: list[Station] | None = None, context_stays: list[int | None] | None = None,
+               stay_minutes: int | None = None) -> dict:
         """Answer a traveller's question from facts only, in the language of the question.
 
         `lang` = the kiosk screen language (used when the question's language is unclear),
@@ -151,6 +158,11 @@ class Assistant:
         which trip the question means ("the first one", "when does it arrive?") and to phrase the answer.
         `context_destination` / `context_origin` = the trip the previous answer was about (the result's
         `context`, sent back by the chat); used when the new question names no trip of its own.
+        Trips with stops on the way ("first Interlaken, then Bern"): `context_via` / `context_stays` = the stops
+        and the minutes to stay at each (None = not said yet) from the previous answer's `context`;
+        `stay_minutes` = a stay the traveller picked with a button (applies to the first stop without one).
+        The answer then has a `route` (every part planned, each leaving after the stay) and asks how long to
+        stay where that is still unknown, with ideas of what to do there.
         """
         screen_lang = lang if lang in LANG_NAMES else "en"
         # Best guess of the question's language before the answer: what was heard, else the screen language.
@@ -181,13 +193,24 @@ class Assistant:
             # The trip this answer is about ({"origin", "destination"}), for the chat to send back next time;
             # None when the answer is about no trip (the chat then keeps the trip it had).
             "context": None,
+            # A trip with stops on the way: every part, the stays, ideas for each stop (see _route).
+            "route": None,
             "debug": debug,
         }
+        if destination is None:
+            wanted = self._route_request(intent, kiosk, at, context_destination, context_origin,
+                                         context_via or [], context_stays or [], clean_stay(stay_minutes))
+            if wanted is not None:
+                return self._route_answer(wanted, question, kiosk, at, lang, screen_lang, history, extra_facts,
+                                          result)
         # Chat follow-up ("and which platform?"): the trip discussed before stands in for the traveller's trip.
         # A destination named in the new question still wins, and still gets its own "Show my next train".
         remembered = None
         if destination is None and context_destination is not None and context_destination.id != kiosk.id:
             remembered = context_destination
+        if intent.get("via"):
+            # Not a trip with stops after all (an unknown place, a choice of destinations): every place counts.
+            intent = {**intent, "destinations": [*intent["via"], *(intent.get("destinations") or [])]}
         plan = self._trip_plan(intent, kiosk, destination or remembered)
         # Still the trip discussed before: the question named no trip ("ticket"), or named the same destination
         # without a start station of its own ("trip" to the remembered destination, from the kiosk).
@@ -233,6 +256,12 @@ class Assistant:
                 facts.append(f"No connection from {origin.name} to {dest.name} could be found.")
         if plan["offer"] is not None:
             result["trip_destination"] = plan["offer"].to_dict()
+        return self._ai_answer(facts, question, kiosk, at, lang, screen_lang, history, extra_facts, result)
+
+    def _ai_answer(self, facts: list[str], question: str, kiosk: Station, at: int, lang: str, screen_lang: str,
+                   history: list[dict] | None, extra_facts: list[str] | None, result: dict) -> dict:
+        """Phrase the answer with the AI from `facts` (+ disruptions near the kiosk and station tips)."""
+        debug = result["debug"]
         nearby = []
         if kiosk.lat is not None:
             nearby = self.disruptions.near(self.disruptions.list_at(at), kiosk.lat, kiosk.lon, self.radius_m)
@@ -297,6 +326,235 @@ class Assistant:
         result["answer"] = answer.strip()
         result["answered"] = True
         return result
+
+    # ------------------------------------------------------------------ trips with stops on the way
+
+    def _route_request(self, intent: dict, kiosk: Station, at: int, ctx_dest: Station | None,
+                       ctx_origin: Station | None, ctx_via: list[Station], ctx_stays: list[int | None],
+                       stay_button: int | None) -> dict | None:
+        """The trip with stops this question is about, or None (then the question is handled as usual).
+
+        A new one when the question names stops on the way ("first Interlaken, then Bern"); the one from the
+        conversation when the question names no other trip ("2 hours", "which platform?", "Interlaken").
+        Returns {'stops': [start, *via, destination], 'stays': [minutes|None per stop on the way],
+        'new': True if the question changed the route or a stay (the answer then shows the route)}.
+        """
+        via_m = list(intent.get("via") or [])
+        dest_m = list(intent.get("destinations") or [])
+        origin_m = intent.get("origin_match")
+        origin = origin_m["station"] if origin_m and origin_m.get("station") is not None else None
+        stay = stay_button if stay_button is not None else clean_stay(intent.get("stay_minutes"))
+        ctx_via = [s for s in ctx_via if s is not None][:MAX_STOPS]
+        ctx_stays = [clean_stay(x) for x in ctx_stays][:len(ctx_via)]
+        ctx_stays += [None] * (len(ctx_via) - len(ctx_stays))
+        ctx_ids = {s.id for s in ctx_via} | ({ctx_dest.id} if ctx_dest is not None else set())
+        has_route = ctx_dest is not None and bool(ctx_via)
+
+        def known(m: dict) -> bool:
+            return m["station"] is not None or (m["how"] == "ambiguous" and bool(m["choices"]))
+
+        def in_route(m: dict) -> bool:
+            st = m["station"]
+            if st is not None:
+                return st.id in ctx_ids
+            return any(c.id in ctx_ids for c in m["choices"])
+
+        def pick(m: dict, prev: Station) -> Station | None:
+            """The station a name means; for "Interlaken" (West or Ost): the one already in the route, else the
+            one reached first."""
+            if m["station"] is not None:
+                return m["station"]
+            if m["how"] != "ambiguous" or not m["choices"]:
+                return None
+            in_ctx = next((c for c in m["choices"] if c.id in ctx_ids), None)
+            if in_ctx is not None:
+                return in_ctx
+            best: tuple[int, Station] | None = None
+            for c in m["choices"]:
+                j = self.advisor.planner.earliest_arrival(prev.id, c.id, at)
+                if j is not None and (best is None or j.arrival < best[0]):
+                    best = (j.arrival, c)
+            return best[1] if best else m["choices"][0]
+
+        def with_stay(stays: list[int | None]) -> bool:
+            """Put the stay said now on the first stop without one (or the only stop); True if it changed."""
+            if stay is None or not stays:
+                return False
+            k = next((i for i, x in enumerate(stays) if x is None), None)
+            if k is None:
+                if len(stays) != 1:
+                    return False
+                k = 0
+            changed = stays[k] != stay
+            stays[k] = stay
+            return changed
+
+        if via_m:
+            if not all(known(m) for m in via_m + dest_m) or len(dest_m) > 1:
+                return None  # an unknown place, or a choice of destinations: handled as usual
+            start = origin if origin is not None and origin.id != kiosk.id else None
+            first = start or kiosk
+            via: list[Station] = []
+            prev = first
+            for m in via_m[:MAX_STOPS]:
+                st = pick(m, prev)
+                if st is None or st.id == first.id or any(st.id == v.id for v in via):
+                    continue
+                via.append(st)
+                prev = st
+            dest = pick(dest_m[0], prev) if dest_m else ctx_dest
+            if dest is None or dest.id == first.id:
+                return None
+            via = [v for v in via if v.id != dest.id]
+            if not via:
+                return None
+            same = has_route and dest.id == ctx_dest.id and [v.id for v in via] == [v.id for v in ctx_via] \
+                and (start is None or (ctx_origin is not None and start.id == ctx_origin.id))
+            if same:
+                start = ctx_origin
+            stays = list(ctx_stays) if same else [None] * len(via)
+            changed = with_stay(stays)
+            return {"stops": [start or kiosk, *via, dest], "stays": stays, "new": changed or not same}
+
+        if not has_route:
+            return None
+        if origin is not None and origin.id != kiosk.id and (ctx_origin is None or origin.id != ctx_origin.id):
+            return None  # a trip from another station: a new trip
+        if not all(in_route(d) for d in dest_m):
+            if intent.get("new_trip"):
+                return None  # "what about Spiez instead?": a new trip
+            # "Do I change in Spiez?": a station the route's trains stop at is about the route, not a new trip.
+            on_way = self._stations_on(self._plan_legs([ctx_origin or kiosk, *ctx_via, ctx_dest], ctx_stays, at,
+                                                       "en", {}))
+            if not all((d["station"] is not None and d["station"].id in on_way) or
+                       (d["station"] is None and any(c.id in on_way for c in d["choices"])) for d in dest_m):
+                return None  # another destination: a new trip
+        stays = list(ctx_stays)
+        changed = with_stay(stays)
+        return {"stops": [ctx_origin or kiosk, *ctx_via, ctx_dest], "stays": stays, "new": changed}
+
+    def _plan_legs(self, stops: list[Station], stays: list[int | None], at: int, lang: str, debug: dict) -> list[dict]:
+        """One planned part per pair of stops, each leaving after the stay at the stop before it; stops at the
+        first part whose stay is not known or that has no train."""
+        legs: list[dict] = []
+        depart = at
+        for i in range(len(stops) - 1):
+            if i > 0:
+                previous = legs[-1]["journey"]
+                if previous is None or stays[i - 1] is None:
+                    break  # the next part depends on a stay not known yet
+                depart = int(datetime.fromisoformat(previous["arrival"]).timestamp()) + stays[i - 1] * 60
+            a, b = stops[i], stops[i + 1]
+            try:
+                advice = self.advisor.advise(a, b, at, depart_at=depart, lang=lang, count=1)
+            except Exception as exc:  # noqa: BLE001 - a failed part must not break the answer
+                debug.setdefault("advice_errors", []).append(str(exc))
+                advice = {"status": "no_connection", "alternatives": [], "affecting_disruptions": []}
+            best = (advice.get("alternatives") or [None])[0]
+            if best is not None and i > 0 and \
+                    datetime.fromisoformat(best["departure"]).timestamp() - depart > MAX_WAIT_AFTER_STAY_S:
+                best = None  # e.g. the first train next morning: there is no train after this stay today
+            legs.append({
+                "from": a.to_dict(), "to": b.to_dict(), "depart_after": to_iso(depart), "journey": best,
+                "status": advice["status"] if best is not None else "no_connection",
+                "disruptions": [d["title"] for d in advice.get("affecting_disruptions") or [] if d.get("title")],
+            })
+            if best is None:
+                break
+        return legs
+
+    @staticmethod
+    def _stations_on(legs: list[dict]) -> set[int]:
+        """Every station the planned trains of a route stop at (changes included)."""
+        ids: set[int] = set()
+        for leg in legs:
+            for train in (leg["journey"] or {}).get("legs") or []:
+                ids.add(train["from"]["id"])
+                ids.add(train["to"]["id"])
+                ids.update(st["id"] for st in train.get("stops") or [])
+        return ids
+
+    def _route_answer(self, wanted: dict, question: str, kiosk: Station, at: int, lang: str, screen_lang: str,
+                      history: list[dict] | None, extra_facts: list[str] | None, result: dict) -> dict:
+        """Plan every part of a trip with stops (each part leaves after the stay at the stop before it).
+
+        When the question changed the route or a stay, the answer is a fixed sentence with the route (asking
+        how long to stay where that is not known yet), so its times come from the planner only. Other questions
+        about the route ("which platform?") are answered by the AI from the route's facts."""
+        debug = result["debug"]
+        stops: list[Station] = wanted["stops"]
+        stays: list[int | None] = wanted["stays"]
+        debug["trip_plan"] = "route"
+        debug["route"] = {"stops": [s.name for s in stops], "stays": stays, "changed": wanted["new"]}
+
+        legs = self._plan_legs(stops, stays, at, lang, debug)
+
+        ask = next((i for i, x in enumerate(stays) if x is None), None)
+        missing = next((i for i, leg in enumerate(legs) if leg["journey"] is None), None)
+        complete = missing is None and ask is None and len(legs) == len(stops) - 1
+        ideas = [{"stop": stops[i + 1].to_dict(), "stay": stays[i],
+                  "ideas": self.ideas.for_stop(stops[i + 1], stays[i], lang)} for i in range(len(stays))]
+        start = stops[0]
+        result["context"] = {
+            "origin": start.to_dict() if start.id != kiosk.id else None,
+            "destination": stops[-1].to_dict(),
+            "via": [s.to_dict() for s in stops[1:-1]],
+            "stays": stays,
+        }
+        route = route_text(stops, stays, lang)
+
+        if wanted["new"]:
+            if missing is not None:
+                leg = legs[missing]
+                text = NO_TRAIN[lang].format(route=route, frm=leg["from"]["name"], to=leg["to"]["name"],
+                                             time=_hhmm(leg["depart_after"]))
+                text += SHORTER_STAY[lang] if missing > 0 else ASK_STAFF[lang]
+            elif ask is not None:
+                text = ASK_STAY[lang].format(route=route, stop=stops[ask + 1].name)
+            else:
+                text = FULL_ROUTE[lang].format(route=route, start=start.name, destination=stops[-1].name,
+                                               departure=_hhmm(legs[0]["journey"]["departure"]),
+                                               arrival=_hhmm(legs[-1]["journey"]["arrival"]))
+            result.update(answer=text, answered=True, answer_lang=lang)
+            result["route"] = {
+                "stops": [s.to_dict() for s in stops],
+                "stays": stays,
+                "legs": legs,
+                "ask_stay": None if ask is None or missing is not None else
+                {"index": ask, "stop": stops[ask + 1].to_dict(), "options": STAY_OPTIONS},
+                "ideas": ideas,
+                "complete": complete,
+            }
+            if complete and start.id == kiosk.id:
+                result["trip_destination"] = stops[1].to_dict()  # "Show my next train": the first part
+            return result
+
+        # A question about the route ("which platform?", "what can I do in Interlaken?"): the AI answers from it.
+        now = datetime.fromtimestamp(at, ZURICH)
+        facts = [f"Now: {now.strftime('%A %d %B %Y')}, {now.strftime('%H:%M')}. The kiosk is at {kiosk.name} station.",
+                 "The kiosk only knows connections from now on, today. It cannot plan trips for another day or "
+                 "another time, and it has no ticket prices.",
+                 f"The traveller plans a trip with stops on the way: {route}."]
+        if start.id != kiosk.id:
+            facts.append(f"The trip starts at {start.name} (the traveller is at {kiosk.name} now).")
+        for i, stop in enumerate(stops[1:-1]):
+            if stays[i] is None:
+                facts.append(f"The traveller has not said yet how long they will stay in {stop.name}; ask them.")
+            else:
+                facts.append(f"The traveller stays {stay_label(stays[i], lang)} in {stop.name}.")
+        for i, leg in enumerate(legs):
+            label = f"Part {i + 1} of the route, {leg['from']['name']} to {leg['to']['name']}"
+            if leg["journey"] is None:
+                facts.append(f"{label}: no train after {_hhmm(leg['depart_after'])} today.")
+            else:
+                facts += _journey_lines(leg["journey"], label)
+            for title in leg["disruptions"]:
+                facts.append(f"{label} is affected by a disruption: {title}.")
+        for item in ideas:
+            for idea in item["ideas"]:
+                facts.append(f"Something to do in {item['stop']['name']} (about {stay_label(idea['minutes'], lang)}): "
+                             f"{idea['title']}.")
+        return self._ai_answer(facts, question, kiosk, at, lang, screen_lang, history, extra_facts, result)
 
     def _trip_plan(self, intent: dict, kiosk: Station, ticket_dest: Station | None) -> dict:
         """Decide which trip the facts are about, or that the kiosk must ask back.

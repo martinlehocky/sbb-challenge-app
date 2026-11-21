@@ -143,6 +143,23 @@ class QuestionRequest(BaseModel):
         None, description="Destination already discussed in this conversation, used when the question names none")
     context_origin: str | None = Field(
         None, description="Start station of that trip, when it is not the kiosk (e.g. 'from Winterthur to Chur')")
+    context_via: list[str] = Field(default_factory=list, max_length=3,
+                                   description="Stops on the way of that trip ('first Interlaken, then Bern')")
+    context_stays: list[int | None] = Field(default_factory=list, max_length=3,
+                                            description="Minutes to stay at each of those stops (null = not said)")
+    stay_minutes: int | None = Field(None, ge=5, le=720,
+                                     description="A stay the traveller picked with a button (first stop without one)")
+
+
+def parse_json_list(raw: str | None, limit: int = 3) -> list:
+    """A JSON list sent as a form field (voice questions); anything else is an empty list, never an error."""
+    if not raw:
+        return []
+    try:
+        items = json.loads(raw)
+    except ValueError:
+        return []
+    return items[:limit] if isinstance(items, list) else []
 
 
 class PlacesRequest(BaseModel):
@@ -385,16 +402,23 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
     def answer_question(question: str, station: str, at: str | None, lang: str, destination: str | None,
                         extra_facts: list[str], spoken_lang: str | None = None,
                         history: list[dict] | None = None, context_destination: str | None = None,
-                        context_origin: str | None = None) -> dict:
+                        context_origin: str | None = None, context_via: list | None = None,
+                        context_stays: list | None = None, stay_minutes: int | None = None) -> dict:
         s = svc()
         kiosk = station_or_404(station)
         dest = station_or_404(destination) if destination else None
         # The trip remembered from the conversation is only a hint: an unknown station is ignored, not an error.
         context = s.stations.resolve(context_destination) if context_destination else None
         start = s.stations.resolve(context_origin) if context_origin and context is not None else None
+        # Stops on the way: all of them known, or the route is forgotten (the stays must stay aligned).
+        via = [s.stations.resolve(str(v)) for v in (context_via or []) if isinstance(v, (str, int))]
+        if context is None or not via or any(v is None for v in via) or len(via) != len(context_via or []):
+            via = []
+        stays = [x if isinstance(x, int) and not isinstance(x, bool) else None for x in (context_stays or [])]
         return s.assistant.answer(question, kiosk, when(at), lang=lang, destination=dest, extra_facts=extra_facts,
                                   spoken_lang=spoken_lang, history=history, context_destination=context,
-                                  context_origin=start)
+                                  context_origin=start, context_via=via, context_stays=stays[:len(via)],
+                                  stay_minutes=stay_minutes)
 
     @app.post("/api/v1/question", tags=["assistant"])
     def question(req: QuestionRequest) -> dict:
@@ -406,7 +430,9 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
         """
         return answer_question(req.question, req.station, req.at, req.lang, req.destination, req.extra_facts,
                                history=[t.model_dump() for t in req.history],
-                               context_destination=req.context_destination, context_origin=req.context_origin)
+                               context_destination=req.context_destination, context_origin=req.context_origin,
+                               context_via=req.context_via, context_stays=req.context_stays,
+                               stay_minutes=req.stay_minutes)
 
     @app.post("/api/v1/question/voice", tags=["assistant"])
     async def question_voice(file: UploadFile = File(...), station: str = Form(...), at: str | None = Form(None),
@@ -414,7 +440,10 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
                              extra_facts: str | None = Form(None, description="JSON list of strings"),
                              history: str | None = Form(None, description='JSON list of {"role", "text"}'),
                              context_destination: str | None = Form(None),
-                             context_origin: str | None = Form(None)) -> dict:
+                             context_origin: str | None = Form(None),
+                             context_via: str | None = Form(None, description="JSON list of station ids"),
+                             context_stays: str | None = Form(None, description="JSON list of minutes or null"),
+                             stay_minutes: int | None = Form(None, ge=5, le=720)) -> dict:
         """Spoken question: speech to text, then the same as /question."""
         transcript, stt = await transcribe_request(file, station, lang)
         if not transcript:
@@ -430,7 +459,8 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
         out = await run_in_threadpool(lambda: answer_question(
             transcript, station, at, lang, destination, facts, spoken_lang=spoken,
             history=parse_history(history), context_destination=context_destination,
-            context_origin=context_origin))
+            context_origin=context_origin, context_via=parse_json_list(context_via),
+            context_stays=parse_json_list(context_stays), stay_minutes=stay_minutes))
         out["debug"] = {"speech_to_text": stt, **out.get("debug", {})}
         return out
 

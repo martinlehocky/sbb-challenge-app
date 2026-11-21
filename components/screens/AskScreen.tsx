@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import type { ChatContext, ChatTurn, QuestionDebug } from '@/lib/ai';
+import type { ChatContext, ChatRoute, ChatTurn, QuestionDebug } from '@/lib/ai';
 import { getMessages } from '@/lib/i18n/messages';
 import { withScenario } from '@/lib/scenario';
 import type { Lang, Scenario } from '@/lib/types';
@@ -36,6 +36,8 @@ interface QuestionResponse {
   choices?: { id: string; name: string }[];
   /** The trip this answer was about, to send back with the next question (null: no trip, keep the old one). */
   context?: ChatContext | null;
+  /** A trip with stops on the way: every part, the stays, and ideas for each stop. */
+  route?: ChatRoute | null;
   debug?: QuestionDebug;
 }
 
@@ -54,6 +56,8 @@ type ChatMessage =
       trip: Trip | null;
       /** The kiosk asks back ("Which one do you mean?") with one button per station. */
       choices: Trip[];
+      /** A trip with stops ("first Interlaken, then Bern"): the full route, and how long to stay if not known. */
+      route?: ChatRoute | null;
     }
   | { id: string; role: 'notice'; text: string };
 
@@ -260,7 +264,7 @@ export function AskScreen({
       return [{ role: m.role, text: m.text }];
     });
 
-  const ask = async (body: FormData, info: AskDebugState, via: 'voice' | 'text') => {
+  const ask = async (body: FormData, info: AskDebugState, via: 'voice' | 'text', stay?: number) => {
     touch();
     setPhase('thinking');
     setLastDebug(info);
@@ -272,7 +276,13 @@ export function AskScreen({
     } else if (context) {
       body.set('context', context.destination.id);
       if (context.origin) body.set('context_origin', context.origin.id);
+      if (context.via?.length) {
+        // A trip with stops: the stops and how long to stay at each (null = not said yet).
+        body.set('context_via', JSON.stringify(context.via.map((v) => v.id)));
+        body.set('context_stays', JSON.stringify(context.via.map((_, i) => context.stays?.[i] ?? null)));
+      }
     }
+    if (stay) body.set('stay', String(stay));
     const started = performance.now();
     try {
       const res = await fetch('/api/ai/question', { method: 'POST', body });
@@ -299,6 +309,7 @@ export function AskScreen({
         lang: data.answerLang ?? scenario.lang,
         trip,
         choices: data.clarify ? (data.choices ?? []) : [],
+        route: data.route ?? null,
       });
       // The trip this answer was about becomes the conversation's trip for follow-ups. An answer about no trip
       // ("where can I get a coffee?") keeps the old one. "About my trip" keeps the ticket's trip.
@@ -382,7 +393,17 @@ export function AskScreen({
     void ask(form, { input: 'text', typed: question }, 'text');
   };
 
+  /** A stay button ("Stay 2 h"): shown as the traveller's answer, sent with the minutes so nothing is guessed. */
+  const pickStay = (minutes: number, label: string) => {
+    if (phase !== 'idle') return;
+    add({ id: newId(), role: 'traveller', text: label, via: 'text' });
+    const form = new FormData();
+    form.set('text', label);
+    void ask(form, { input: 'text', typed: label }, 'text', minutes);
+  };
+
   const busy = phase !== 'idle';
+  const lastKiosk = [...messages].reverse().find((m) => m.role === 'kiosk')?.id;
   const back = aboutTrip
     ? { href: withScenario('/kiosk/result', scenario), label: t.common.back, icon: 'chevron-small-left-small' }
     : { href: withScenario('/kiosk', { ...scenario, to: undefined }), label: t.common.cancel, icon: 'cross-small' };
@@ -421,7 +442,14 @@ export function AskScreen({
         {(messages.length > 0 || phase === 'thinking') && (
           <ol className={styles.chat} aria-live="polite" aria-relevant="additions">
             {messages.map((m) => (
-              <Message key={m.id} message={m} scenario={scenario} t={t} />
+              <Message
+                key={m.id}
+                message={m}
+                scenario={scenario}
+                t={t}
+                // Only the newest answer's stay buttons work: an older question has been answered already.
+                onStay={m.id === lastKiosk && !busy ? pickStay : undefined}
+              />
             ))}
             {phase === 'thinking' && (
               <li className={styles.theirs}>
@@ -499,10 +527,12 @@ function Message({
   message: m,
   scenario,
   t,
+  onStay,
 }: {
   message: ChatMessage;
   scenario: Scenario;
   t: ReturnType<typeof getMessages>;
+  onStay?: (minutes: number, label: string) => void;
 }) {
   if (m.role === 'notice') {
     return (
@@ -534,7 +564,7 @@ function Message({
   }
   // With buttons ("Show my next train · <station>", station choices) the bubble may use the full width,
   // so long station names are not cut off with "…".
-  const withActions = Boolean(m.trip) || m.choices.length > 0;
+  const withActions = Boolean(m.trip) || m.choices.length > 0 || Boolean(m.route);
   return (
     <li className={styles.theirs}>
       <div className={`${styles.bubble} ${styles.kiosk} ${withActions ? styles.withActions : ''}`}>
@@ -551,6 +581,7 @@ function Message({
             {m.text}
           </SbbNotification>
         )}
+        {m.route && <RouteCard route={m.route} t={getMessages(m.lang)} lang={m.lang} onStay={onStay} />}
         {m.choices.map((c) => (
           <NavButton
             key={c.id}
@@ -568,5 +599,119 @@ function Message({
         )}
       </div>
     </li>
+  );
+}
+
+const hhmm = (iso: string) => iso.slice(11, 16);
+
+/** 120 -> "2 h", 90 -> "1 h 30", 45 -> "45 min" (as the backend writes it in the answer). */
+function stayLabel(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (!h) return `${m}\u00a0min`;
+  return m ? `${h}\u00a0h\u00a0${String(m).padStart(2, '0')}` : `${h}\u00a0h`;
+}
+
+/**
+ * The full route of a trip with stops, as a timeline: each train (time, station, platform), then the time at
+ * each stop with ideas of what to do there. Where the stay is not known yet, the kiosk asks with buttons.
+ */
+function RouteCard({
+  route,
+  t,
+  lang,
+  onStay,
+}: {
+  route: ChatRoute;
+  t: ReturnType<typeof getMessages>;
+  lang: Lang;
+  onStay?: (minutes: number, label: string) => void;
+}) {
+  return (
+    <section className={styles.route} lang={lang} aria-label={t.ask.route}>
+      <h3 className={styles.routeTitle}>{t.ask.route}</h3>
+      <ol className={styles.steps}>
+        {route.parts.map((part, i) => {
+          const stop = route.stops[i + 1];
+          const isStop = i < route.stops.length - 2;
+          const stay = route.stays[i] ?? null;
+          const next = route.parts[i + 1];
+          const arrived = part.trains?.at(-1)?.arrival;
+          const leaves = next?.trains?.[0]?.departure;
+          const ideas = route.ideas.find((x) => x.stop.id === stop.id)?.ideas ?? [];
+          const asking = route.askStay?.index === i;
+          return (
+            <li key={`${part.from.id}-${part.to.id}-${i}`} className={styles.part}>
+              {part.trains ? (
+                <ol className={styles.trains}>
+                  {part.trains.map((train, k) => (
+                    <li key={`${train.departure}-${k}`} className={styles.train}>
+                      <p className={styles.trainName}>
+                        <SbbIcon name="train-small" className={styles.trainIcon} />
+                        <strong>{train.line ?? ''}</strong>
+                        {train.direction && <span>{t.result.towards(train.direction)}</span>}
+                      </p>
+                      <p className={styles.stopLine}>
+                        <time className={styles.time}>{hhmm(train.departure)}</time>
+                        <span className={styles.station}>{train.from.name}</span>
+                        {train.from.platform && <span className={styles.platform}>{t.result.platformShort(train.from.platform)}</span>}
+                      </p>
+                      <p className={styles.stopLine}>
+                        <time className={styles.time}>{hhmm(train.arrival)}</time>
+                        <span className={styles.station}>{train.to.name}</span>
+                        {train.to.platform && <span className={styles.platform}>{t.result.platformShort(train.to.platform)}</span>}
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <SbbNotification type="warn" readOnly animation="none" className={styles.notice}>
+                  {part.from.name} → {part.to.name}: {t.ask.noTrain}
+                </SbbNotification>
+              )}
+              {isStop && part.trains && (
+                <div className={styles.stay}>
+                  <p className={styles.stayTitle}>
+                    <SbbIcon name="walk-small" className={styles.trainIcon} />
+                    <strong>{t.ask.stayAt(stop.name)}</strong>
+                  </p>
+                  {stay !== null ? (
+                    <p className={styles.stayTime}>
+                      {arrived && leaves ? t.ask.stayFor(stayLabel(stay), hhmm(arrived), hhmm(leaves)) : stayLabel(stay)}
+                    </p>
+                  ) : (
+                    <p className={styles.stayTime}>{t.ask.howLong}</p>
+                  )}
+                  {ideas.length > 0 && (
+                    <>
+                      <p className={styles.ideasTitle}>{t.ask.ideasFor(stop.name)}</p>
+                      <ul className={styles.ideas}>
+                        {ideas.map((idea) => (
+                          <li key={idea.title}>
+                            {idea.title} <span className={styles.ideaTime}>({t.ask.about(stayLabel(idea.minutes))})</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                  {asking && onStay && (
+                    <div className={styles.stayButtons}>
+                      {route.askStay!.options.map((minutes) => {
+                        const label = t.ask.stayButton(stayLabel(minutes));
+                        return (
+                          <SbbSecondaryButton key={minutes} size="l" onClick={() => onStay(minutes, label)}>
+                            {label}
+                          </SbbSecondaryButton>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }

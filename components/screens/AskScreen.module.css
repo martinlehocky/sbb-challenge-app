@@ -92,6 +92,127 @@
   --sbb-button-padding-inline: var(--sbb-spacing-fixed-5x);
 }
 
+/* ---------------------------------------------------------------- full route of a trip with stops */
+
+.route {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sbb-spacing-fixed-3x);
+  margin-block-start: var(--sbb-spacing-fixed-2x);
+  padding: var(--sbb-spacing-fixed-4x);
+  border-radius: var(--sbb-border-radius-4x);
+  background-color: var(--sbb-color-white);
+}
+
+.routeTitle {
+  margin: 0;
+  font-size: var(--sbb-text-font-size-m);
+}
+
+.steps,
+.trains,
+.ideas {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.steps {
+  gap: var(--sbb-spacing-fixed-3x);
+}
+
+.part,
+.trains {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sbb-spacing-fixed-3x);
+}
+
+/* One train: a line on the left, like a timetable. */
+.train {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sbb-spacing-fixed-1x);
+  padding-inline-start: var(--sbb-spacing-fixed-4x);
+  border-inline-start: var(--sbb-spacing-fixed-1x) solid var(--sbb-color-primary);
+}
+
+.trainName,
+.stopLine,
+.stayTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sbb-spacing-fixed-2x);
+  margin: 0;
+  font-size: var(--sbb-text-font-size-s);
+}
+
+.trainIcon {
+  flex-shrink: 0;
+}
+
+.stopLine {
+  font-size: var(--sbb-text-font-size-m);
+}
+
+.time {
+  min-width: 3.2em;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+.station {
+  font-weight: bold;
+}
+
+.platform {
+  color: var(--sbb-color-4);
+  font-size: var(--sbb-text-font-size-s);
+}
+
+/* The time at a stop, with ideas of what to do there. */
+.stay {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sbb-spacing-fixed-2x);
+  padding: var(--sbb-spacing-fixed-3x) var(--sbb-spacing-fixed-4x);
+  border-radius: var(--sbb-border-radius-4x);
+  background-color: var(--sbb-color-milk);
+}
+
+.stayTime {
+  margin: 0;
+  font-size: var(--sbb-text-font-size-m);
+}
+
+.ideasTitle {
+  margin: 0;
+  font-size: var(--sbb-text-font-size-s);
+  font-weight: bold;
+}
+
+.ideas {
+  gap: var(--sbb-spacing-fixed-2x);
+  padding-inline-start: var(--sbb-spacing-fixed-5x);
+  list-style: disc;
+  font-size: var(--sbb-text-font-size-s);
+}
+
+.ideaTime {
+  color: var(--sbb-color-4);
+  white-space: nowrap;
+}
+
+.stayButtons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sbb-spacing-fixed-3x);
+  margin-block-start: var(--sbb-spacing-fixed-2x);
+}
+
 /* ---------------------------------------------------------------- composer (always at the bottom) */
 
 .composer {
