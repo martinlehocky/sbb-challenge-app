@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Literal
@@ -29,12 +30,21 @@ from .timeutil import parse_query_time, to_iso
 log = logging.getLogger("sbb_backend.api")
 Lang = Literal["en", "de", "fr", "it"]
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
+def is_prompt_echo(transcript: str) -> bool:
+    """True if the transcript is only a list of hint station names ("Chur, Lugano"): Whisper does that on silence."""
+    parts = [p.strip(" .") for p in transcript.split(",")]
+    return len(parts) >= 2 and all(p and p in STT_PROMPT for p in parts)
+
+
+# Languages the kiosk speaks (ISO codes and the names some speech models report instead).
+KIOSK_LANGUAGES = {"en", "de", "fr", "it", "english", "german", "french", "italian"}
 # Vocabulary hint for speech recognition, so short Swiss names ("Chur", "Thun") are not misheard.
+# Only names, no sentence: an English sentence here makes Whisper translate Italian or French speech into English.
 STT_PROMPT = (
-    "A traveller asks for a train trip in Switzerland. Stations: Zürich HB, Bern, Basel SBB, Genève, Lausanne, "
-    "Luzern, Chur, St. Gallen, Lugano, Bellinzona, Olten, Winterthur, Biel/Bienne, Fribourg, Neuchâtel, Sion, Brig, "
-    "Visp, Interlaken Ost, Thun, Spiez, Zug, Aarau, Baden, Schaffhausen, Rapperswil, Ziegelbrücke, Sargans, "
-    "Landquart, Wädenswil, Pfäffikon SZ, Morges, Nyon, Yverdon-les-Bains, Montreux, Vevey."
+    "Zürich HB, Bern, Basel SBB, Genève, Lausanne, Luzern, Chur, St. Gallen, Lugano, Bellinzona, Olten, "
+    "Winterthur, Biel/Bienne, Fribourg, Neuchâtel, Sion, Brig, Visp, Interlaken Ost, Thun, Spiez, Zug, Aarau, "
+    "Baden, Schaffhausen, Rapperswil, Ziegelbrücke, Sargans, Landquart, Wädenswil, Pfäffikon SZ, Morges, Nyon, "
+    "Yverdon-les-Bains, Montreux, Vevey."
 )
 
 
@@ -276,13 +286,33 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
             hint = STT_PROMPT
             if station:
                 kiosk = s.stations.resolve(station)
-                if kiosk:
-                    hint += f" The traveller is at {kiosk.name}."
-            transcript = await run_in_threadpool(s.ai.transcribe, audio, file.filename or "audio", file.content_type,
-                                                 lang, hint)
+                if kiosk and kiosk.name not in hint:
+                    hint = f"{kiosk.name}, {hint}"
+            # No language given to Whisper first: travellers may speak another language than the screen shows.
+            # Short clips are sometimes detected as an unrelated language (and then translated into it), so
+            # anything outside the kiosk languages is transcribed again in the screen language.
+            name = file.filename or "audio"
+            t0 = time.perf_counter()
+            transcript, detected = await run_in_threadpool(s.ai.transcribe_with_language, audio, name,
+                                                           file.content_type, None, hint)
+            stt = {"model": settings.together_stt_model, "first_transcript": transcript,
+                   "detected_language": detected, "retried_in": None, "audio_bytes": len(audio),
+                   "content_type": file.content_type}
+            if detected is not None and detected.lower() not in KIOSK_LANGUAGES:
+                transcript = await run_in_threadpool(s.ai.transcribe, audio, name, file.content_type, lang, hint)
+                stt["retried_in"] = lang
+            stt["ms"] = round((time.perf_counter() - t0) * 1000)
         except AIError as exc:
             raise ai_http_error(exc) from exc
-        return await run_in_threadpool(ask_from_text, transcript, station, at, lang, with_audio)
+        echo = bool(transcript.strip()) and is_prompt_echo(transcript)
+        stt["prompt_echo"] = echo
+        if not transcript.strip() or echo:
+            return {"transcript": "", "understood": {"origin": None, "destination": None, "method": "none",
+                                                     "note": "No speech recognised"},
+                    "advice": None, "error": "No speech recognised", "debug": {"speech_to_text": stt}}
+        out = await run_in_threadpool(ask_from_text, transcript, station, at, lang, with_audio)
+        out["debug"] = {"speech_to_text": stt, **out.get("debug", {})}
+        return out
 
     @app.post("/api/v1/voice/ask-text", tags=["voice"])
     def text_ask(text: str = Form(..., min_length=1), station: str | None = Form(None), at: str | None = Form(None),
@@ -292,7 +322,9 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
 
     def ask_from_text(text: str, station: str | None, at: str | None, lang: str, with_audio: bool) -> dict:
         s = svc()
+        t0 = time.perf_counter()
         intent = understand_trip(s.stations, s.ai, text)
+        understand_ms = round((time.perf_counter() - t0) * 1000)
         origin = intent["origin"] or (station_or_404(station) if station else None)
         dest = intent["destination"]
         reply_lang = intent["language"] or lang
@@ -303,6 +335,14 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
                 "destination": dest.to_dict() if dest else None,
                 "method": intent["method"],
                 "note": intent["note"],
+            },
+            "debug": {
+                "understanding": {
+                    "model": settings.together_chat_model if intent["method"] == "ai" else None,
+                    "ai_raw": intent.get("raw"),
+                    "language": intent["language"],
+                    "ms": understand_ms,
+                },
             },
         }
         if origin is None or dest is None or origin.id == dest.id:

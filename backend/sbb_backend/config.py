@@ -62,6 +62,11 @@ class Settings:
     together_stt_model: str = field(default_factory=lambda: _env("TOGETHER_STT_MODEL", "openai/whisper-large-v3"))
     together_tts_model: str = field(default_factory=lambda: _env("TOGETHER_TTS_MODEL", "canopylabs/orpheus-3b-0.1-ft"))
     together_tts_voice: str = field(default_factory=lambda: _env("TOGETHER_TTS_VOICE", "tara"))
+    # Optional voice per language (e.g. TOGETHER_TTS_VOICE_DE), for multilingual TTS models such as cartesia/sonic-2.
+    together_tts_voices: dict[str, str] = field(default_factory=lambda: {
+        lang: voice for lang in ("en", "de", "fr", "it")
+        if (voice := _env(f"TOGETHER_TTS_VOICE_{lang.upper()}"))
+    })
     together_timeout_s: float = field(default_factory=lambda: float(_env("TOGETHER_TIMEOUT_S", "60")))
 
     @property

@@ -153,6 +153,11 @@ class TogetherClient:
 
     def transcribe(self, audio: bytes, filename: str, content_type: str | None = None,
                    language: str | None = None, prompt: str | None = None) -> str:
+        return self.transcribe_with_language(audio, filename, content_type, language, prompt)[0]
+
+    def transcribe_with_language(self, audio: bytes, filename: str, content_type: str | None = None,
+                                 language: str | None = None, prompt: str | None = None) -> tuple[str, str | None]:
+        """Speech to text. Returns the text and the language the model detected (ISO code, if it says)."""
         # The docs ask for `model` before `file` in multipart uploads; httpx sends `data` fields first.
         data = {"model": self.settings.together_stt_model, "response_format": "json"}
         if language:
@@ -164,7 +169,8 @@ class TogetherClient:
         text = payload.get("text") if isinstance(payload, dict) else None
         if text is None:
             raise AIError(f"Unexpected transcription response: {str(payload)[:300]}", status=502)
-        return text.strip()
+        detected = payload.get("language") if isinstance(payload.get("language"), str) else None
+        return text.strip(), detected
 
     def speak(self, text: str, *, voice: str | None = None, language: str | None = None,
               fmt: str = "mp3") -> SpeechResult:
@@ -173,7 +179,7 @@ class TogetherClient:
         body: dict[str, Any] = {
             "model": self.settings.together_tts_model,
             "input": text,
-            "voice": voice or self.settings.together_tts_voice,
+            "voice": voice or self.settings.together_tts_voices.get(language or "en") or self.settings.together_tts_voice,
             "response_format": fmt,
             "stream": False,
         }

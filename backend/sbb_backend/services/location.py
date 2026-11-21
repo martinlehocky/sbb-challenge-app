@@ -134,11 +134,15 @@ class LocationService:
         wanted = "any of eat, explore or rest" if interest == "any" else interest
         system = (
             "You suggest things to do near a Swiss railway station for a traveller waiting for a train, often an "
-            f"elderly person. Answer in {LANG_NAMES[lang]}. Suggest at most 4 options. NEVER name a shop, café, "
+            f"elderly person. Answer in {LANG_NAMES[lang]}. Suggest at most 3 options. NEVER name a shop, café, "
             "bakery, restaurant or hotel: describe the kind of place instead (for example 'a café inside the station'). "
-            "You may name only famous public landmarks (a museum, a park, a lake shore, an old town) that you are "
-            "certain are near that station. walk_minutes is one way. Each suggestion must fit the time budget "
-            "including the walk back."
+            "Prefer things inside the station or right in front of it that exist at practically every large Swiss "
+            "station (cafés, kiosks, bakeries, the waiting area, benches, the shops in the station). Name a landmark "
+            "only if it is world-famous AND you are completely sure it is in the same town and within the walking "
+            "time; never invent gardens, parks, museums or promenades. If you are not sure, suggest fewer options. "
+            "walk_minutes is one way and must be realistic. Each suggestion must fit the time budget including the "
+            "walk back. Keep it short for a screen: title at most 6 words, description one sentence of at most "
+            "15 words."
         )
         user = f"Station: {station.name} ({station.municipality or ''}). Local time: {now}. Time budget: {budget}. Interest: {wanted}."
         try:

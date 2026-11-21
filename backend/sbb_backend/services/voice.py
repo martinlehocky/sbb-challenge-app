@@ -24,19 +24,25 @@ def stations_in_order(stations: StationIndex, text: str) -> list[Station]:
 
 
 def understand_trip(stations: StationIndex, ai: TogetherClient | None, text: str) -> dict:
-    """Return {'origin': Station|None, 'destination': Station|None, 'method': str, 'language': str|None, 'note': str|None}."""
+    """Return {'origin': Station|None, 'destination': Station|None, 'method': str, 'language': str|None,
+    'note': str|None, 'raw': dict|None}. `raw` is the AI's answer before matching names to stations (for debugging)."""
+    raw = None
     if ai is not None and ai.enabled:
         try:
             data = ai.chat_json(
                 "Extract the trip a railway traveller in Switzerland asks for. Station names may be in German, "
-                "French, Italian or English. Use null for anything not said.",
+                "French, Italian or English. Use null for anything not said. If the traveller names only one "
+                "place, it is the destination. Always give the official Swiss station name, not a translation "
+                "(for example Genève for Geneva or Genf, Bern for Berne, Luzern for Lucerne, Chur for Coira, "
+                "Basel SBB for Basel).",
                 text, TRIP_SCHEMA, name="trip", max_tokens=200,
             )
+            raw = {k: data.get(k) for k in ("origin", "destination", "language")} if isinstance(data, dict) else None
             origin = stations.resolve(data["origin"]) if isinstance(data.get("origin"), str) and data["origin"].strip() else None
             dest = stations.resolve(data["destination"]) if isinstance(data.get("destination"), str) and data["destination"].strip() else None
             if dest is not None or origin is not None:
                 lang = data.get("language") if data.get("language") in ("en", "de", "fr", "it") else None
-                return {"origin": origin, "destination": dest, "method": "ai", "language": lang, "note": None}
+                return {"origin": origin, "destination": dest, "method": "ai", "language": lang, "note": None, "raw": raw}
             note = "AI found no station in the request"
         except (AIError, KeyError, AttributeError) as exc:
             note = f"AI trip extraction failed, used text matching: {exc}"
@@ -44,7 +50,9 @@ def understand_trip(stations: StationIndex, ai: TogetherClient | None, text: str
         note = None
     found = stations_in_order(stations, text)
     if len(found) >= 2:
-        return {"origin": found[0], "destination": found[1], "method": "text_match", "language": None, "note": note}
+        return {"origin": found[0], "destination": found[1], "method": "text_match", "language": None, "note": note,
+                "raw": raw}
     if len(found) == 1:
-        return {"origin": None, "destination": found[0], "method": "text_match", "language": None, "note": note}
-    return {"origin": None, "destination": None, "method": "text_match", "language": None, "note": note}
+        return {"origin": None, "destination": found[0], "method": "text_match", "language": None, "note": note,
+                "raw": raw}
+    return {"origin": None, "destination": None, "method": "text_match", "language": None, "note": note, "raw": raw}

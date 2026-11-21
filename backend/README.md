@@ -62,6 +62,16 @@ Only **rail** (GTFS route types 2 and 100–117) is imported. Bus, tram and boat
 Copy `.env.example` to `.env` and set `TOGETHER_API_KEY`. Without a key, everything works except
 transcription, speech, the AI message rewrite and AI suggestions, which return HTTP 503 or an `*_error` field.
 
+The default voice model (Orpheus) only speaks English; German comes out unintelligible. For all four languages use
+`TOGETHER_TTS_MODEL=cartesia/sonic-2` with `TOGETHER_TTS_VOICE_EN/DE/FR/IT` (tested voices: `british lady`,
+`german conversational woman`, `french conversational lady`, `italian narrator woman`).
+
+`/voice/ask` lets Whisper detect the spoken language (travellers may not speak the screen language) and only falls
+back to `lang` when it detects a language outside EN/DE/FR/IT. The speech hint is a plain list of station names: an
+English sentence there made Whisper translate Italian speech into English. On silence Whisper tends to echo hint
+names ("Chur, Lugano"); such transcripts are treated as "no speech". Note: `tests/test_api.py::test_transcribe_and_speak`
+reads `backend/.env`, so blank the `TOGETHER_TTS_*` variables when running the tests with a custom voice setup.
+
 ### 3. Run
 
 ```powershell
