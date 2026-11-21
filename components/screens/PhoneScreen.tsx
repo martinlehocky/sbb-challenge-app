@@ -55,7 +55,7 @@ export function PhoneScreen({ trip, scenario }: { trip: PhoneTrip; scenario: Sce
           <div className={styles.trainRow}>
             <div className={styles.trainInfo}>
               <span className={styles.trainLine}>
-                <LineBadge line={train.line} size="s" /> {t.phone.to(train.direction)}
+                <LineBadge line={train.line} size="s" /> {t.phone.to(train.arrivalStation.name)}
               </span>
               <span className={styles.trainTime}>
                 <strong>{train.departure}</strong>

@@ -63,7 +63,9 @@ export function DemoLanding() {
             Screens
           </SbbTitle>
           <ul className={styles.list}>
-            <Item href="/kiosk">1 · Welcome / idle</Item>
+            <Item href="/kiosk">1 · Need help? (welcome)</Item>
+            <Item href="/kiosk/ask">Ask a question (AI)</Item>
+            <Item href="/kiosk/ask?about=trip">Ask about my trip (AI)</Item>
             <Item href="/kiosk/scan">2 · Scanning ticket</Item>
             <Item href="/kiosk/result">3 · Your next train</Item>
             <Item href="/kiosk/wait">4 · What would you like to do?</Item>

@@ -93,6 +93,19 @@ export interface Trip {
 }
 
 /** A possible connection to the destination, as found by the router. */
+/** One train of a connection (a connection with changes has several). */
+export interface Leg {
+  line: Line;
+  from: Station;
+  departure: ClockTime;
+  /** Platform at `from`. */
+  platform?: string;
+  to: Station;
+  arrival: ClockTime;
+  /** Where the train is heading (the sign on the train), e.g. "Brig". */
+  direction?: string;
+}
+
 export interface Connection {
   id: string;
   train: TrainRun;
@@ -107,6 +120,8 @@ export interface Connection {
   delayVsPlanMinutes: number;
   /** Only true when we actually know it; the backend cannot check tickets, so it sends false. */
   ticketValid: boolean;
+  /** Every train of the connection in order (only set when known, e.g. from the backend). */
+  legs?: Leg[];
   /** Left out when there is no occupancy forecast (the backend has none). */
   occupancy?: { firstClass?: Occupancy; secondClass: Occupancy };
   /** Where to board, e.g. "front (sector A)". */

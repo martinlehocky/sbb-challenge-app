@@ -6,7 +6,9 @@
  * aiStatus() says so and the kiosk hides its AI features.
  */
 import { backendConfig, type BackendConfig } from './backend';
-import type { Lang } from './types';
+import { localize } from './i18n/localize';
+import { restScenarios, waitScenarios } from './mock-data';
+import type { Lang, RestScenario, WaitScenario } from './types';
 
 const TIMEOUT_MS = 60_000;
 const CACHE_TTL_MS = 10 * 60_000;
@@ -149,10 +151,10 @@ async function loadIdeas(interest: Interest, lang: Lang, waitMinutes: number): P
     }));
 }
 
-// ---------------------------------------------------------------- ask by voice or text
+// ---------------------------------------------------------------- questions ("Need help?")
 
-/** What the backend and the AI did with a request (shown in the kiosk's debug panel). */
-export interface AskDebug {
+/** What the backend and the AI did with a question (shown in the kiosk's debug panel). */
+export interface QuestionDebug {
   speech_to_text?: {
     model: string;
     first_transcript: string;
@@ -163,79 +165,101 @@ export interface AskDebug {
     content_type: string | null;
     ms: number;
   };
-  understanding?: {
-    model: string | null;
-    ai_raw: { origin: string | null; destination: string | null; language: string | null } | null;
-    language: string | null;
-    ms: number;
+  trip_intent?: {
+    raw: { origin: string | null; destination: string | null; language: string | null } | null;
+    method: string;
+    destination: string | null;
   };
-  method?: string;
-  note?: string | null;
-  origin?: { id: number; name: string } | null;
-  destination?: { id: number; name: string } | null;
+  facts?: string[];
+  ai_raw?: { answer?: string; answered?: boolean } | null;
+  rejected?: string;
+  error?: string;
+  ms?: number;
+  model?: string;
+  server_ms?: number;
+}
+
+export interface QuestionResult {
+  /** The question as typed, or as heard (empty when no speech was recognised). */
+  question: string;
+  answer: string | null;
+  /** false: the facts did not contain the answer, or the answer was rejected (then `answer` points to staff). */
+  answered: boolean;
+  /** Set when the question was a trip ("I need to get to Bern"): offer "Show my next train". */
+  tripDestination: { id: string; name: string } | null;
+  debug: QuestionDebug;
+}
+
+interface ApiQuestion {
+  question: string;
+  answer: string | null;
+  answered: boolean;
+  trip_destination: { id: number; name: string } | null;
+  debug?: QuestionDebug;
   error?: string;
 }
 
-export interface AskResult {
-  transcript: string;
-  destination: { id: string; name: string } | null;
-  /** Why no destination could be used (not understood, or same station as the kiosk). */
-  problem?: 'not_understood' | 'same_station';
-  debug: AskDebug;
-}
-
-interface ApiAsk {
-  transcript: string;
-  understood: {
-    origin: { id: number; name: string } | null;
-    destination: { id: number; name: string } | null;
-    method?: string;
-    note?: string | null;
-  };
-  error?: string;
-  debug?: Pick<AskDebug, 'speech_to_text' | 'understanding'>;
-}
-
-function toAskResult(data: ApiAsk, cfg: BackendConfig): AskResult {
-  const debug: AskDebug = {
-    ...data.debug,
-    method: data.understood.method,
-    note: data.understood.note,
-    origin: data.understood.origin,
-    destination: data.understood.destination,
-    error: data.error,
-  };
-  const dest = data.understood.destination;
-  if (!dest) return { transcript: data.transcript, destination: null, problem: 'not_understood', debug };
-  if (String(dest.id) === cfg.kioskStation) {
-    return {
-      transcript: data.transcript,
-      destination: { id: String(dest.id), name: dest.name },
-      problem: 'same_station',
-      debug,
-    };
+/**
+ * Hand-written tips for the kiosk station (only Zürich HB has them), sent to the AI as extra facts.
+ * They come from the same data as screens 5-5c, in the screen language.
+ */
+function stationTips(cfg: BackendConfig, lang: Lang): string[] {
+  if (cfg.kioskStation !== '8503000') return [];
+  const walk = (w: { minutes: number; maxMinutes?: number }) =>
+    w.maxMinutes ? `${w.minutes}-${w.maxMinutes} min walk` : `${w.minutes} min walk`;
+  const tips = new Map<string, string>();
+  for (const level of ['short', 'medium', 'long'] as const) {
+    const s = localize<WaitScenario>(waitScenarios[level], lang);
+    for (const i of s.eat) tips.set(`eat ${i.id}`, `Eat or drink - ${i.title}: ${i.location}, ${walk(i.walk)}.`);
+    for (const { place } of s.explore.places) {
+      tips.set(`see ${place.id}`, `Sight - ${place.name}: ${place.history} ${walk(place.walk)}.`);
+    }
   }
-  return { transcript: data.transcript, destination: { id: String(dest.id), name: dest.name }, debug };
+  const rest = localize<RestScenario>(restScenarios.day, lang);
+  for (const o of rest.options) tips.set(`rest ${o.id}`, `Rest - ${o.name}: ${o.details.join(', ')}, ${walk(o.walk)}.`);
+  // Some tips name "the stairs to platform {platform}" (filled in per screen); the AI gets a neutral wording.
+  return [...tips.values()].map((tip) => tip.replaceAll('{platform}', "your train's platform"));
 }
 
-/** Typed request ("Bern", "I need to get to Lugano"): the AI finds the destination station. */
-export async function aiAskText(text: string, lang: Lang): Promise<AskResult> {
+function toQuestionResult(data: ApiQuestion, lang: Lang): QuestionResult {
+  return {
+    question: data.question,
+    answer: data.answer ? swiss(data.answer, lang) : null,
+    answered: data.answered,
+    tripDestination: data.trip_destination
+      ? { id: String(data.trip_destination.id), name: data.trip_destination.name }
+      : null,
+    debug: { ...data.debug, ...(data.error ? { error: data.error } : {}) },
+  };
+}
+
+/**
+ * A question at the kiosk, typed or spoken. `destination` = the traveller's trip when they ask about it
+ * (after scanning); without it, a trip question ("I need to get to Bern") returns `tripDestination`.
+ */
+export async function aiQuestion(
+  input: { text: string } | { audio: Blob; filename: string },
+  lang: Lang,
+  trip?: { destination?: string },
+): Promise<QuestionResult> {
   const cfg = config();
+  // About the traveller's trip: their chosen destination, or the scanned ticket's.
+  const destination = trip ? (trip.destination ?? cfg.destination) : undefined;
+  const tips = stationTips(cfg, lang);
+  if ('text' in input) {
+    const data = await request<ApiQuestion>(
+      cfg,
+      '/question',
+      json({ question: input.text, station: cfg.kioskStation, at: cfg.at, lang, destination, extra_facts: tips }),
+    );
+    return toQuestionResult(data, lang);
+  }
   const form = new FormData();
-  form.set('text', text);
+  form.set('file', input.audio, input.filename);
   form.set('station', cfg.kioskStation);
   form.set('at', cfg.at);
   form.set('lang', lang);
-  return toAskResult(await request<ApiAsk>(cfg, '/voice/ask-text', { method: 'POST', body: form }), cfg);
-}
-
-/** Spoken request: speech to text, then the same as aiAskText. */
-export async function aiAskAudio(audio: Blob, filename: string, lang: Lang): Promise<AskResult> {
-  const cfg = config();
-  const form = new FormData();
-  form.set('file', audio, filename);
-  form.set('station', cfg.kioskStation);
-  form.set('at', cfg.at);
-  form.set('lang', lang);
-  return toAskResult(await request<ApiAsk>(cfg, '/voice/ask', { method: 'POST', body: form }), cfg);
+  if (destination) form.set('destination', destination);
+  form.set('extra_facts', JSON.stringify(tips));
+  return toQuestionResult(await request<ApiQuestion>(cfg, '/question/voice', { method: 'POST', body: form }), lang);
 }

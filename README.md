@@ -48,14 +48,14 @@ Deliberately not shown with live data, because the data cannot back it up: "Your
 | Route | Screen |
 |---|---|
 | `/` | Demo landing page: links to every screen and scenario |
-| `/kiosk` | 1 · Welcome / idle |
+| `/kiosk` | 1 · “Need help?”: scan your ticket or ask a question |
 | `/kiosk/scan` | 2 · Scanning ticket (animates, then goes to 3; live webcam if allowed) |
 | `/kiosk/result` | 3 · Your next train |
 | `/kiosk/wait` | 4 · What would you like to do? |
 | `/kiosk/wait/eat` | 5 · Eat or drink something |
 | `/kiosk/wait/explore` | 5b · Have a look around |
 | `/kiosk/wait/rest` | 5c · Sit down and rest |
-| `/kiosk/ask` | “No ticket?”: say or type the destination (AI) |
+| `/kiosk/ask` | Ask a question by voice or text (AI); `?about=trip` = about the traveller's journey |
 | `/phone` | 6 · Live updates on phone |
 
 Kiosk pages are drawn on a fixed **1080 × 1920** portrait canvas that is scaled down to fit the browser window (full size on a real portrait screen). The phone page is 390 px wide, shown in a phone frame on desktop.
@@ -91,8 +91,8 @@ Example: `/kiosk/wait/rest?time=night`, `/kiosk/wait/explore?wait=long&lang=de`.
 
 | Where | What the AI does | Without AI |
 |---|---|---|
-| `/kiosk/ask` | Speech to text (Whisper), then understands the trip (“Ich muss nach Genf” → Genève) and continues with the real next train | Typed search still works (station-name matching); the microphone is hidden |
-| Screen 3 | “In plain words”: the advice rewritten for stressed or older travellers, shown as text | Box hidden |
+| `/kiosk/ask` | Answers questions by voice or text (Whisper + Qwen) from facts only: the traveller's journey and alternatives, live disruptions and their messages, and the hand-written station tips. Answers with a time not in the facts are rejected (then: “ask staff”). A trip question (“Ich muss nach Genf”) also offers “Show my next train” | Notice: questions not available |
+| Screen 3 | “In plain words”: the advice rewritten for stressed or older travellers, shown as text. “What can I do in X min?” only with 10+ minutes before the back-by time, else “go to your platform”. “Ask about my trip” always | Box hidden |
 | Screens 5–5c | One AI idea next to two hand-written ones, when it fits the time left; otherwise the third hand-written idea | Three hand-written ideas |
 
 - All AI output is marked “AI-generated” (SBB AI pattern “author”) and shows a working indicator while it loads; AI ideas add “Please check on site”.

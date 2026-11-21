@@ -188,7 +188,71 @@
   width: 100%;
 }
 
+.secondaryActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sbb-spacing-fixed-4x);
+}
+
+.secondaryActions > * {
+  width: 100%;
+  --sbb-button-padding-inline: var(--sbb-spacing-fixed-4x);
+}
+
+.actions .goNow {
+  font-size: var(--sbb-text-font-size-s);
+  --sbb-notification-padding-block: var(--sbb-spacing-fixed-2x);
+}
+
 /* With the AI summary box the screen has one block more: a little less space between blocks. */
 .mainWithAi {
   gap: var(--sbb-spacing-fixed-3x);
+}
+
+.towards {
+  color: var(--sbb-color-4);
+  font-size: var(--sbb-text-font-size-xs);
+}
+
+/* Trains of a connection with changes, in order. */
+.journey {
+  margin-block-start: var(--sbb-spacing-fixed-1x);
+}
+
+.journeyTitle {
+  margin: 0 0 var(--sbb-spacing-fixed-2x);
+  color: var(--sbb-color-4);
+  font-size: var(--sbb-text-font-size-xs);
+  font-weight: bold;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.legs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sbb-spacing-fixed-2x);
+  margin: 0;
+  padding: 0 0 0 var(--sbb-spacing-fixed-3x);
+  border-inline-start: var(--sbb-border-width-2x) solid var(--sbb-border-color-5);
+  list-style: none;
+}
+
+.leg {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  align-items: start;
+  gap: var(--sbb-spacing-fixed-3x);
+  font-size: var(--sbb-text-font-size-xs);
+  line-height: 1.3;
+}
+
+.legMain {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.legSub {
+  color: var(--sbb-color-4);
 }

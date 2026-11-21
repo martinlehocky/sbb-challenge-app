@@ -318,6 +318,15 @@ export function mapConnection(j: ApiJourney, lang: Lang, dest: Station, best?: A
     tradeOff: best ? tradeOff(j, best, lang) : undefined,
     delayVsPlanMinutes: Math.max(0, j.delay_vs_plan_min ?? 0),
     ticketValid: false, // the backend cannot check tickets, so we do not claim it
+    legs: j.legs.map((l) => ({
+      line: toLine(l.line, l.category),
+      from: station(l.from),
+      departure: clock(l.departure),
+      platform: l.from.platform ?? undefined,
+      to: station(l.to),
+      arrival: clock(l.arrival),
+      direction: l.direction ?? undefined,
+    })),
     // no occupancy: there is no forecast in the data
   };
 }

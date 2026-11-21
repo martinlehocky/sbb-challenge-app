@@ -18,6 +18,11 @@ import {
 } from '../sbb';
 import styles from './ResultScreen.module.css';
 
+/** Minutes the traveller should be back before departure (as in the demo data: 11:37 train, back by 11:30). */
+const BACK_BY_BUFFER_MIN = 7;
+/** Wait ideas are offered only with at least this many minutes until the back-by time. */
+const MIN_WAIT_MIN = 10;
+
 /** Screen 3 · Your next train. */
 export function ResultScreen({
   result,
@@ -32,6 +37,10 @@ export function ResultScreen({
   const { trip, best } = result;
   const planned = trip.plannedTrain;
   const t = getMessages(scenario.lang);
+  // "What can I do?" only with enough time: at least MIN_WAIT_MIN minutes before the back-by time.
+  const canWait = result.minutesToDeparture - BACK_BY_BUFFER_MIN >= MIN_WAIT_MIN;
+  const askQuery = withScenario('/kiosk/ask', scenario);
+  const askHref = `${askQuery}${askQuery.includes('?') ? '&' : '?'}about=trip`;
 
   return (
     <KioskFrame lang={scenario.lang}>
@@ -75,9 +84,15 @@ export function ResultScreen({
               <div className={styles.bestLine}>
                 <LineBadge line={best.train.line} size="l" />
                 <span className={styles.to}>
-                  {t.result.to(best.train.direction ?? best.arrivalStation.name)}
+                  {t.result.to(best.arrivalStation.name)}
                   {best.occupancy && <SbbTimetableOccupancy secondClassOccupancy={best.occupancy.secondClass} />}
                 </span>
+                {/* With changes, the journey list below already shows each train's direction. */}
+                {best.train.direction && best.train.direction !== best.arrivalStation.name && !(best.legs && best.legs.length > 1) && (
+                  <span className={styles.towards}>
+                    {best.train.line.name} {t.result.towards(best.train.direction)}
+                  </span>
+                )}
               </div>
               <div className={styles.bestDeparture}>
                 <span className={styles.bigTime}>{best.train.departure}</span>
@@ -103,13 +118,38 @@ export function ResultScreen({
               </div>
             </dl>
 
-            <p className={styles.fact}>
-              <SbbIcon name="circle-tick-small" className={styles.ok} />
-              <span>
-                {best.changes === 0 ? t.result.direct : `${t.common.changes(best.changes)}.`}{' '}
-                {best.ticketValid && t.result.ticketValid}
-              </span>
-            </p>
+            {best.legs && best.legs.length > 1 ? (
+              <section className={styles.journey} aria-label={t.result.yourJourney}>
+                <p className={styles.journeyTitle}>
+                  {t.result.yourJourney} · {t.common.changes(best.changes)}
+                </p>
+                <ol className={styles.legs}>
+                  {best.legs.map((leg, i) => (
+                    <li key={`${leg.line.name}-${leg.departure}-${i}`} className={styles.leg}>
+                      <LineBadge line={leg.line} size="s" />
+                      <span className={styles.legMain}>
+                        <strong>
+                          {leg.departure} {leg.from.name}
+                          {leg.platform && `, ${t.result.platformShort(leg.platform)}`}
+                        </strong>
+                        <span className={styles.legSub}>
+                          {leg.direction && `${t.result.towards(leg.direction)} · `}
+                          {t.result.legArrives(leg.to.name, leg.arrival)}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            ) : (
+              <p className={styles.fact}>
+                <SbbIcon name="circle-tick-small" className={styles.ok} />
+                <span>
+                  {best.changes === 0 ? t.result.direct : `${t.common.changes(best.changes)}.`}{' '}
+                  {best.ticketValid && t.result.ticketValid}
+                </span>
+              </p>
+            )}
             {best.occupancy?.secondClass === 'high' && (
               <p className={styles.fact}>
                 <SbbIcon name="user-group-small" />
@@ -137,12 +177,23 @@ export function ResultScreen({
       </KioskMain>
       <KioskFooter>
         <div className={styles.actions}>
-          <NavButton href={withScenario('/kiosk/wait', scenario)}>
-            {t.result.whatCanIDo(result.minutesToDeparture)}
-          </NavButton>
-          <NavButton href={withScenario('/phone', scenario)} variant="secondary" iconName="smartphone-small">
-            {t.result.sendToPhone}
-          </NavButton>
+          {canWait ? (
+            <NavButton href={withScenario('/kiosk/wait', scenario)}>
+              {t.result.whatCanIDo(result.minutesToDeparture)}
+            </NavButton>
+          ) : (
+            <SbbNotification type="warn" readOnly animation="none" className={styles.goNow}>
+              {t.result.goToPlatform(best.train.platform)}
+            </SbbNotification>
+          )}
+          <div className={styles.secondaryActions}>
+            <NavButton href={askHref} variant="secondary" size="m">
+              {t.result.askTrip}
+            </NavButton>
+            <NavButton href={withScenario('/phone', scenario)} variant="secondary" size="m">
+              {t.result.sendToPhone}
+            </NavButton>
+          </div>
         </div>
       </KioskFooter>
     </KioskFrame>

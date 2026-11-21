@@ -133,3 +133,15 @@
   color: var(--sbb-color-4);
   font-size: var(--sbb-text-font-size-xs);
 }
+
+.answer {
+  margin: var(--sbb-spacing-fixed-1x) 0 var(--sbb-spacing-fixed-6x);
+  font-size: var(--sbb-text-font-size-m);
+  line-height: var(--sbb-typo-line-height-heading);
+  white-space: pre-line;
+}
+
+.cantAnswer {
+  margin: var(--sbb-spacing-fixed-2x) 0 var(--sbb-spacing-fixed-6x);
+  font-size: var(--sbb-text-font-size-s);
+}

@@ -1,6 +1,6 @@
 'use client';
 
-import type { AskDebug } from '@/lib/ai';
+import type { QuestionDebug } from '@/lib/ai';
 import styles from './AskDebugPanel.module.css';
 
 export interface RecordingInfo {
@@ -19,14 +19,13 @@ export interface AskDebugState {
   typed?: string;
   recording?: RecordingInfo;
   /** From the backend (speech to text, AI understanding, matched stations). */
-  server?: AskDebug & { server_ms?: number };
+  server?: QuestionDebug;
   roundTripMs?: number;
   httpStatus?: number;
   clientError?: string;
 }
 
 const val = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
-const station = (s?: { id: number; name: string } | null) => (s ? `${s.name} (${s.id})` : '—');
 
 /**
  * Debugging for the voice / text search: what the microphone heard, what Whisper transcribed,
@@ -44,7 +43,6 @@ export function AskDebugPanel({
   last: AskDebugState | null;
 }) {
   const stt = last?.server?.speech_to_text;
-  const und = last?.server?.understanding;
   return (
     <section className={styles.panel} aria-label="Debug information">
       <h2 className={styles.title}>Debug · what the AI detected</h2>
@@ -90,27 +88,37 @@ export function AskDebugPanel({
             </div>
           )}
 
-          {last.server && (
+          {last.server?.trip_intent && (
             <div className={styles.row}>
-              <span className={styles.key}>AI extracted</span>
+              <span className={styles.key}>Trip in question</span>
               <span className={styles.value}>
-                {und?.ai_raw
-                  ? <>origin <b>{val(und.ai_raw.origin)}</b> · destination <b>{val(und.ai_raw.destination)}</b> ·
-                      language {val(und.ai_raw.language)}</>
-                  : 'no AI answer'}
-                {und && <> · {und.ms} ms · {val(und.model)}</>}
+                {last.server.trip_intent.raw
+                  ? <>AI read destination <b>{val(last.server.trip_intent.raw.destination)}</b> (origin {val(last.server.trip_intent.raw.origin)})</>
+                  : 'no AI answer'}{' '}
+                → matched <b>{val(last.server.trip_intent.destination)}</b> · {last.server.trip_intent.method}
               </span>
             </div>
           )}
 
-          {last.server && (
+          {last.server?.facts && (
             <div className={styles.row}>
-              <span className={styles.key}>Matched</span>
+              <span className={styles.key}>Facts given ({last.server.facts.length})</span>
+              <span className={`${styles.value} ${styles.facts}`}>
+                {last.server.facts.map((f, i) => (
+                  <span key={i}>{f}</span>
+                ))}
+              </span>
+            </div>
+          )}
+
+          {last.server && (last.server.ai_raw || last.server.error || last.server.rejected) && (
+            <div className={styles.row}>
+              <span className={styles.key}>AI answer</span>
               <span className={styles.value}>
-                from {station(last.server.origin)} → <b>{station(last.server.destination)}</b> · method{' '}
-                <b>{val(last.server.method)}</b>
-                {last.server.note && <> · note: {last.server.note}</>}
-                {last.server.error && <> · {last.server.error}</>}
+                {last.server.ai_raw && <>answered <b>{val(last.server.ai_raw.answered)}</b> · </>}
+                {last.server.rejected && <><b>rejected</b>: {last.server.rejected} · </>}
+                {last.server.error && <><b>error</b>: {last.server.error} · </>}
+                {val(last.server.ms)} ms · {val(last.server.model)}
               </span>
             </div>
           )}

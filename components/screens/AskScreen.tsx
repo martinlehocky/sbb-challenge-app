@@ -1,48 +1,41 @@
 'use client';
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import type { QuestionDebug } from '@/lib/ai';
 import { getMessages } from '@/lib/i18n/messages';
 import { withScenario } from '@/lib/scenario';
-import type { AskDebug } from '@/lib/ai';
 import type { Scenario } from '@/lib/types';
 import { AiChip } from '../ai/AiChip';
-import { AskDebugPanel, type AskDebugState } from '../ai/AskDebugPanel';
 import { AiWorking } from '../ai/AiWorking';
+import { AskDebugPanel, type AskDebugState } from '../ai/AskDebugPanel';
 import { useAiStatus } from '../ai/useAiStatus';
 import { KioskFooter, KioskFrame, KioskMain } from '../KioskFrame';
 import { KioskHeader } from '../KioskHeader';
 import { NavButton } from '../NavButton';
 import { ScreenIntro } from '../ScreenIntro';
-import {
-  SbbButton,
-  SbbCard,
-  SbbFormField,
-  SbbIcon,
-  SbbNotification,
-  SbbSecondaryButton,
-  SbbTitle,
-} from '../sbb';
+import { SbbButton, SbbCard, SbbFormField, SbbIcon, SbbNotification, SbbSecondaryButton } from '../sbb';
 import styles from './AskScreen.module.css';
 
 /** Longest recording; the kiosk stops listening by itself after this. */
-const MAX_RECORDING_MS = 10_000;
+const MAX_RECORDING_MS = 12_000;
 /** Peak level (0-1) a recording must reach; below it we heard nothing (speech recognition would guess). */
 const MIN_PEAK_LEVEL = 0.04;
 const MIME_TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+
+interface QuestionResponse {
+  question: string;
+  answer: string | null;
+  answered: boolean;
+  tripDestination: { id: string; name: string } | null;
+  debug?: QuestionDebug;
+}
 
 type Phase =
   | { kind: 'idle' }
   | { kind: 'listening' }
   | { kind: 'thinking' }
-  | { kind: 'found'; transcript: string; destination: { id: string; name: string } }
-  | { kind: 'problem'; message: string; transcript?: string };
-
-interface AskResponse {
-  transcript: string;
-  destination: { id: string; name: string } | null;
-  problem?: 'not_understood' | 'same_station';
-  debug?: AskDebug & { server_ms?: number };
-}
+  | { kind: 'answer'; question: string; answer: string; answered: boolean; trip: { id: string; name: string } | null }
+  | { kind: 'problem'; message: string };
 
 function extensionFor(mime: string): string {
   if (mime.includes('mp4')) return 'm4a';
@@ -51,15 +44,24 @@ function extensionFor(mime: string): string {
 }
 
 /**
- * "No ticket? Type your destination": the traveller says or types where they want to go.
- * The AI (speech to text + trip understanding in the backend) finds the destination station,
- * shows what it understood, and the kiosk continues with the real next train to it.
+ * "Ask a question": the traveller speaks or types a question. The backend gathers facts (their journey,
+ * disruptions, station tips) and the AI answers from those facts only, as text on the screen.
+ * `aboutTrip`: asked from the result screen, so the question is about the traveller's journey.
  */
-export function AskScreen({ now, scenario, debug = false }: { now: string; scenario: Scenario; debug?: boolean }) {
+export function AskScreen({
+  now,
+  scenario,
+  aboutTrip = false,
+  debug = false,
+}: {
+  now: string;
+  scenario: Scenario;
+  aboutTrip?: boolean;
+  debug?: boolean;
+}) {
   const t = getMessages(scenario.lang);
   const status = useAiStatus();
-  const canAsk = status?.backend ?? false;
-  const canSpeak = status?.ai ?? false;
+  const canAsk = status?.ai ?? false;
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
   const [text, setText] = useState('');
   const recorder = useRef<MediaRecorder | null>(null);
@@ -83,7 +85,7 @@ export function AskScreen({ now, scenario, debug = false }: { now: string; scena
     [],
   );
 
-  /** Tracks the loudest moment of the recording, so silence is not sent to speech recognition. */
+  /** Tracks the loudness of the recording, so silence is not sent to speech recognition. */
   const startMeter = (stream: MediaStream) => {
     try {
       const ctx = new AudioContext();
@@ -91,21 +93,25 @@ export function AskScreen({ now, scenario, debug = false }: { now: string; scena
       analyser.fftSize = 2048;
       ctx.createMediaStreamSource(stream).connect(analyser);
       const samples = new Float32Array(analyser.fftSize);
-      const state = { ctx, peak: 0, timer: setInterval(() => {
-        analyser.getFloatTimeDomainData(samples);
-        let now = 0;
-        for (const v of samples) now = Math.max(now, Math.abs(v));
-        state.peak = Math.max(state.peak, now);
-        // Smoothed for display (falls slowly), so the bar does not drop to 0 between words.
-        setLevel((l) => ({ now: Math.max(now, l.now * 0.85), peak: state.peak }));
-      }, 50) };
+      const state = {
+        ctx,
+        peak: 0,
+        timer: setInterval(() => {
+          analyser.getFloatTimeDomainData(samples);
+          let current = 0;
+          for (const v of samples) current = Math.max(current, Math.abs(v));
+          state.peak = Math.max(state.peak, current);
+          // Smoothed for display (falls slowly), so the bar does not drop to 0 between words.
+          setLevel((l) => ({ now: Math.max(current, l.now * 0.85), peak: state.peak }));
+        }, 50),
+      };
       meter.current = state;
     } catch {
       meter.current = null; // no Web Audio: skip the check
     }
   };
 
-  /** Peak level heard (1 if it could not be measured). */
+  /** Loudest level heard (1 if it could not be measured). */
   const stopMeter = (): number => {
     const m = meter.current;
     meter.current = null;
@@ -120,25 +126,31 @@ export function AskScreen({ now, scenario, debug = false }: { now: string; scena
     setPhase({ kind: 'thinking' });
     setLastDebug(info);
     body.set('lang', scenario.lang);
+    if (aboutTrip) {
+      body.set('about', 'trip');
+      if (scenario.to) body.set('to', scenario.to);
+    }
     const started = performance.now();
     try {
-      const res = await fetch('/api/ai/ask', { method: 'POST', body });
+      const res = await fetch('/api/ai/question', { method: 'POST', body });
       const roundTripMs = Math.round(performance.now() - started);
       if (!res.ok) {
         setLastDebug({ ...info, httpStatus: res.status, roundTripMs, clientError: (await res.text()).slice(0, 200) });
-        throw new Error(`ask ${res.status}`);
+        throw new Error(`question ${res.status}`);
       }
-      const data = (await res.json()) as AskResponse;
+      const data = (await res.json()) as QuestionResponse;
       setLastDebug({ ...info, httpStatus: res.status, roundTripMs, server: data.debug });
-      if (!data.transcript) {
+      if (!data.question || !data.answer) {
         setPhase({ kind: 'problem', message: t.ask.heardNothing });
-      } else if (data.destination && !data.problem) {
-        setPhase({ kind: 'found', transcript: data.transcript, destination: data.destination });
-      } else if (data.problem === 'same_station' && data.destination) {
-        setPhase({ kind: 'problem', message: t.ask.sameStation(data.destination.name), transcript: data.transcript });
-      } else {
-        setPhase({ kind: 'problem', message: t.ask.notUnderstood, transcript: data.transcript || undefined });
+        return;
       }
+      setPhase({
+        kind: 'answer',
+        question: data.question,
+        answer: data.answer,
+        answered: data.answered,
+        trip: aboutTrip ? null : data.tripDestination,
+      });
     } catch (err) {
       console.error('[ask] failed:', err);
       setLastDebug((d) => (d && !d.clientError ? { ...d, clientError: (err as Error).message } : d));
@@ -215,19 +227,25 @@ export function AskScreen({ now, scenario, debug = false }: { now: string; scena
   };
 
   const busy = phase.kind === 'listening' || phase.kind === 'thinking';
+  const back = aboutTrip
+    ? { href: withScenario('/kiosk/result', scenario), label: t.common.back, icon: 'chevron-small-left-small' }
+    : { href: withScenario('/kiosk', { ...scenario, to: undefined }), label: t.common.cancel, icon: 'cross-small' };
 
   return (
     <KioskFrame lang={scenario.lang}>
       <KioskHeader
         time={now}
         start={
-          <NavButton href={withScenario('/kiosk', scenario)} variant="secondary" iconName="cross-small">
-            {t.common.cancel}
+          <NavButton href={back.href} variant="secondary" iconName={back.icon}>
+            {back.label}
           </NavButton>
         }
       />
       <KioskMain className={styles.main}>
-        <ScreenIntro title={t.ask.title} lead={t.ask.lead} />
+        <ScreenIntro
+          title={aboutTrip ? t.ask.titleTrip : t.ask.title}
+          lead={aboutTrip ? t.ask.leadTrip : t.ask.lead}
+        />
 
         {status && !canAsk && (
           <SbbNotification type="info" readOnly animation="none" className={styles.notice}>
@@ -235,15 +253,8 @@ export function AskScreen({ now, scenario, debug = false }: { now: string; scena
           </SbbNotification>
         )}
 
-        {canAsk && !canSpeak && phase.kind === 'idle' && (
-          <SbbNotification type="info" readOnly animation="none" className={styles.notice}>
-            {t.ask.voiceUnavailable}
-          </SbbNotification>
-        )}
-
         {canAsk && (phase.kind === 'idle' || phase.kind === 'listening') && (
           <>
-            {canSpeak && (
             <div className={styles.voice}>
               {phase.kind === 'listening' ? (
                 <>
@@ -261,7 +272,6 @@ export function AskScreen({ now, scenario, debug = false }: { now: string; scena
                 </SbbButton>
               )}
             </div>
-            )}
 
             <form className={styles.form} onSubmit={submitText}>
               <SbbFormField size="l" className={styles.field}>
@@ -271,12 +281,12 @@ export function AskScreen({ now, scenario, debug = false }: { now: string; scena
                   onChange={(e) => setText(e.target.value)}
                   placeholder={t.ask.placeholder}
                   autoComplete="off"
-                  enterKeyHint="search"
+                  enterKeyHint="send"
                   disabled={busy}
                 />
               </SbbFormField>
               <SbbButton size="l" type="submit" iconName="magnifying-glass-small" disabled={busy || !text.trim()}>
-                {t.ask.search}
+                {t.ask.send}
               </SbbButton>
             </form>
           </>
@@ -288,23 +298,34 @@ export function AskScreen({ now, scenario, debug = false }: { now: string; scena
           </div>
         )}
 
-        {phase.kind === 'found' && (
+        {phase.kind === 'answer' && (
           <SbbCard color="white" className={styles.found} aria-live="polite">
             <div className={styles.foundHead}>
-              <span className={styles.label}>{t.ask.yourRequest}</span>
-              <AiChip label={t.ai.label} />
+              <span className={styles.label}>{t.ask.yourQuestion}</span>
+              {phase.answered && <AiChip label={t.ai.label} />}
             </div>
-            <p className={styles.transcript}>“{phase.transcript}”</p>
-            <span className={styles.label}>{t.ask.destination}</span>
-            <SbbTitle level="2" visualLevel="2" className={styles.station}>
-              <SbbIcon name="arrow-right-small" /> {phase.destination.name}
-            </SbbTitle>
+            <p className={styles.transcript}>“{phase.question}”</p>
+            <span className={styles.label}>{t.ask.answer}</span>
+            {phase.answered ? (
+              <p className={styles.answer}>{phase.answer}</p>
+            ) : (
+              <SbbNotification type="info" readOnly animation="none" className={styles.cantAnswer}>
+                {phase.answer}
+              </SbbNotification>
+            )}
             <div className={styles.actions}>
-              <NavButton href={withScenario('/kiosk/result', { ...scenario, to: phase.destination.id })}>
-                {t.ask.showTrain}
-              </NavButton>
+              {phase.trip && (
+                <NavButton href={withScenario('/kiosk/result', { ...scenario, to: phase.trip.id })}>
+                  {t.ask.showTrain} · {phase.trip.name}
+                </NavButton>
+              )}
+              {aboutTrip && (
+                <NavButton href={withScenario('/kiosk/result', scenario)} variant={phase.trip ? 'secondary' : 'primary'}>
+                  {t.ask.backToTrip}
+                </NavButton>
+              )}
               <SbbSecondaryButton size="l" onClick={reset}>
-                {t.ask.tryAgain}
+                {t.ask.askAnother}
               </SbbSecondaryButton>
             </div>
           </SbbCard>
@@ -313,14 +334,14 @@ export function AskScreen({ now, scenario, debug = false }: { now: string; scena
         {phase.kind === 'problem' && (
           <div className={styles.problem} aria-live="polite">
             <SbbNotification type="warn" readOnly animation="none" className={styles.notice}>
-              {phase.transcript && <span className={styles.heard}>“{phase.transcript}”</span>}
               {phase.message}
             </SbbNotification>
             <SbbButton size="l" onClick={reset} className={styles.wide}>
-              {t.ask.tryAgain}
+              {t.ask.askAnother}
             </SbbButton>
           </div>
         )}
+
         {debug && <AskDebugPanel live={phase.kind === 'listening'} level={level.now} loudest={level.peak} last={lastDebug} />}
       </KioskMain>
       <KioskFooter>
