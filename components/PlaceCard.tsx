@@ -4,6 +4,8 @@ import type { Messages } from '@/lib/i18n/messages';
 import type { Lang, NearbyPlace } from '@/lib/types';
 import { IdeaCard } from './IdeaCard';
 import { PhotoBox } from './PhotoBox';
+import { PlaceQrDialog } from './PlaceQrDialog';
+import { SbbIcon } from './sbb';
 import styles from './PlaceCard.module.css';
 
 /** Swiss number format, the same on server and browser (Intl differs between Node and Chrome: ' vs ’). */
@@ -28,7 +30,20 @@ export function GooglePhoto({ url, alt, credit }: { url: string; alt: string; cr
 }
 
 /** A real place from Google Places: photo on the left (with its author), kind, rating, walk and back-by time. */
-export function PlaceCard({ place, backBy, t, lang }: { place: NearbyPlace; backBy: string; t: Messages; lang: Lang }) {
+export function PlaceCard({
+  place,
+  backBy,
+  t,
+  lang,
+  onOpen,
+}: {
+  place: NearbyPlace;
+  backBy: string;
+  t: Messages;
+  lang: Lang;
+  /** Tapping the card: show the QR code that opens the place on the traveller's phone. */
+  onOpen?: (place: NearbyPlace) => void;
+}) {
   const rating =
     place.rating != null
       ? `★ ${swissNumber(place.rating, lang, 1)}` + (place.ratingCount ? ` (${swissNumber(place.ratingCount, lang)})` : '')
@@ -58,11 +73,34 @@ export function PlaceCard({ place, backBy, t, lang }: { place: NearbyPlace; back
       walk={t.common.walk(place.walkMinutes)}
       note={t.common.backBy(backBy)}
       notePlacement="below"
+      onSelect={onOpen ? () => onOpen(place) : undefined}
+      selectLabel={t.places.openOnPhone(place.name)}
     />
   );
 }
 
-/** "Places and photos: Google Maps" under the list (required by Google's terms). */
-export function GoogleAttribution({ t }: { t: Messages }) {
-  return <li className={styles.attribution}>{t.places.attribution}</li>;
+/**
+ * Under the list: "Tap a place to open it on your phone" and the "Google Maps" credit (required by Google's
+ * terms). Also holds the QR window for the place tapped (`selected`).
+ */
+export function GoogleAttribution({
+  t,
+  selected = null,
+  onClose = () => {},
+}: {
+  t: Messages;
+  selected?: NearbyPlace | null;
+  onClose?: () => void;
+}) {
+  return (
+    <li className={styles.attribution}>
+      <span className={styles.hint}>
+        <SbbIcon name="smartphone-small" />
+        {t.places.tapHint}
+      </span>
+      {/* Short credit here (the screen is full); the chat has room for "Places and photos: Google Maps". */}
+      <span>Google Maps</span>
+      <PlaceQrDialog place={selected} t={t} onClose={onClose} />
+    </li>
+  );
 }

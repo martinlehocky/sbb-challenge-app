@@ -1,14 +1,20 @@
 'use client';
 
+import { useState } from 'react';
 import type { ChatPlace } from '@/lib/ai';
 import type { Messages } from '@/lib/i18n/messages';
 import type { Lang } from '@/lib/types';
 import { GooglePhoto, swissNumber } from './PlaceCard';
+import { PlaceQrDialog } from './PlaceQrDialog';
 import { SbbIcon } from './sbb';
 import styles from './ChatPlaces.module.css';
 
-/** Places recommended in the chat ("What can I do in Basel?"): photo on the left, name, rating, walking time. */
+/**
+ * Places recommended in the chat ("What can I do in Basel?"): photo on the left, name, rating, walking time.
+ * Tapping a place shows a QR code that opens it in Google Maps on the traveller's phone.
+ */
 export function ChatPlaces({ places, t, lang }: { places: ChatPlace[]; t: Messages; lang: Lang }) {
+  const [selected, setSelected] = useState<ChatPlace | null>(null);
   if (!places.length) return null;
   return (
     <div className={styles.wrap}>
@@ -20,31 +26,49 @@ export function ChatPlaces({ places, t, lang }: { places: ChatPlace[]; t: Messag
               : null;
           const kind = [rating, p.typeLabel].filter(Boolean).join(' · ');
           return (
-            <li key={p.id} className={styles.place}>
-              {p.photo ? (
-                <GooglePhoto
-                  url={p.photo.url}
-                  alt={p.name}
-                  credit={p.photo.author ? t.places.photoBy(p.photo.author) : undefined}
-                />
-              ) : (
-                <span className={styles.noPhoto} aria-hidden="true">
-                  <SbbIcon name="picture-large" />
+            <li key={p.id}>
+              <button
+                type="button"
+                className={styles.place}
+                onClick={() => setSelected(p)}
+                aria-haspopup="dialog"
+                aria-label={t.places.openOnPhone(p.name)}
+              >
+                {p.photo ? (
+                  <GooglePhoto
+                    url={p.photo.url}
+                    alt=""
+                    credit={p.photo.author ? t.places.photoBy(p.photo.author) : undefined}
+                  />
+                ) : (
+                  <span className={styles.noPhoto} aria-hidden="true">
+                    <SbbIcon name="picture-large" />
+                  </span>
+                )}
+                <span className={styles.body}>
+                  <span className={styles.name}>{p.name}</span>
+                  {kind && <span className={styles.line}>{kind}</span>}
+                  <span className={styles.walk}>
+                    <SbbIcon name="walk-small" />
+                    {t.places.walkFrom(p.walkMinutes, p.fromStation)}
+                  </span>
                 </span>
-              )}
-              <div className={styles.body}>
-                <p className={styles.name}>{p.name}</p>
-                {kind && <p className={styles.line}>{kind}</p>}
-                <p className={styles.walk}>
-                  <SbbIcon name="walk-small" />
-                  {t.places.walkFrom(p.walkMinutes, p.fromStation)}
-                </p>
-              </div>
+                <span className={styles.qrIcon} aria-hidden="true">
+                  <SbbIcon name="qrcode-small" />
+                </span>
+              </button>
             </li>
           );
         })}
       </ul>
-      <p className={styles.attribution}>{t.places.attribution}</p>
+      <div className={styles.footer}>
+        <p className={styles.hint}>
+          <SbbIcon name="smartphone-small" />
+          {t.places.tapHint}
+        </p>
+        <p className={styles.attribution}>{t.places.attribution}</p>
+      </div>
+      <PlaceQrDialog place={selected} t={t} onClose={() => setSelected(null)} />
     </div>
   );
 }

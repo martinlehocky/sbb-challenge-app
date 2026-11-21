@@ -1,0 +1,24 @@
+.body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sbb-spacing-fixed-6x);
+  padding-block: var(--sbb-spacing-fixed-4x);
+  text-align: center;
+}
+
+/* Big enough to scan from arm's length; white quiet zone around the code. */
+.qr {
+  display: block;
+  width: 14rem;
+  height: 14rem;
+  border-radius: var(--sbb-border-radius-4x);
+  background-color: var(--sbb-color-white);
+}
+
+.text {
+  max-width: 24rem;
+  margin: 0;
+  font-size: var(--sbb-text-font-size-m);
+  line-height: var(--sbb-typo-line-height-heading);
+}

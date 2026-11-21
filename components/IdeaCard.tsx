@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { SbbCard, SbbIcon, SbbTitle } from './sbb';
+import { SbbCard, SbbCardButton, SbbIcon, SbbTitle } from './sbb';
 import styles from './IdeaCard.module.css';
 
 /** Grey card used for wait ideas, sights and places to rest (screens 5–5c). */
@@ -14,6 +14,8 @@ export function IdeaCard({
   badge,
   clampLines = false,
   notePlacement = 'end',
+  onSelect,
+  selectLabel,
 }: {
   title: string;
   /** Shown at the start of the walking-time row, e.g. the "AI-generated" chip. */
@@ -26,11 +28,20 @@ export function IdeaCard({
   note: string;
   media?: ReactNode;
   notePlacement?: 'end' | 'below';
+  /** Makes the whole card a button (e.g. a Google place: tap for the QR code to open it on a phone). */
+  onSelect?: () => void;
+  /** Accessible name of that button (default: the title). */
+  selectLabel?: string;
 }) {
   const noteEl = <p className={styles.note}>{note}</p>;
   return (
     <li>
       <SbbCard color="milk" className={styles.card}>
+        {onSelect && (
+          <SbbCardButton onClick={onSelect} aria-haspopup="dialog">
+            {selectLabel ?? title}
+          </SbbCardButton>
+        )}
         <div className={`${styles.row} ${media ? styles.withMedia : ''}`}>
           {media}
           <div className={styles.body}>

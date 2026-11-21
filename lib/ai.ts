@@ -233,6 +233,8 @@ export interface ChatPlace {
   walkMinutes: number;
   /** The station the walking time is counted from. */
   fromStation: string;
+  /** Google's link to the place (opened on the traveller's phone through a QR code). */
+  mapsUri: string | null;
   /** Served by Google; must be shown with its author. */
   photo: { url: string; author: string | null } | null;
 }
@@ -297,6 +299,7 @@ interface ApiQuestion {
     rating_count: number | null;
     walk_minutes: number;
     from_station: string;
+    maps_uri?: string | null;
     photo: { url: string; author: string | null } | null;
   }[];
   debug?: QuestionDebug;
@@ -410,6 +413,7 @@ function toQuestionResult(data: ApiQuestion, screenLang: Lang): QuestionResult {
       ratingCount: p.rating_count,
       walkMinutes: p.walk_minutes,
       fromStation: p.from_station,
+      mapsUri: p.maps_uri ?? null,
       photo: p.photo?.url ? { url: p.photo.url, author: p.photo.author } : null,
     })),
     debug: { ...data.debug, ...(data.error ? { error: data.error } : {}) },

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { formatWalk, minutesBetween } from '@/lib/format';
 import { getMessages } from '@/lib/i18n/messages';
 import type { NearbyPlace, PlaceSuggestion, Scenario, WaitScenario } from '@/lib/types';
@@ -28,6 +29,8 @@ export function ExploreScreen({
   googlePlaces?: NearbyPlace[] | null;
 }) {
   const t = getMessages(scenario.lang);
+  // The Google place tapped: its QR code (opens it in Google Maps on the traveller's phone) is shown.
+  const [selected, setSelected] = useState<NearbyPlace | null>(null);
   const card = ({ place, backBy }: PlaceSuggestion) => (
     <IdeaCard
       key={place.id}
@@ -52,9 +55,16 @@ export function ExploreScreen({
       {googlePlaces && googlePlaces.length > 0 ? (
         <>
           {googlePlaces.map((p) => (
-            <PlaceCard key={p.id} place={p} backBy={wait.returnPlan.backBy} t={t} lang={scenario.lang} />
+            <PlaceCard
+              key={p.id}
+              place={p}
+              backBy={wait.returnPlan.backBy}
+              t={t}
+              lang={scenario.lang}
+              onOpen={setSelected}
+            />
           ))}
-          <GoogleAttribution t={t} />
+          <GoogleAttribution t={t} selected={selected} onClose={() => setSelected(null)} />
         </>
       ) : (
         <>

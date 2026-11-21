@@ -14,14 +14,45 @@
   list-style: none;
 }
 
+/* The whole row is a button: tap it for the QR code that opens the place on the traveller's phone. */
 .place {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: var(--sbb-spacing-fixed-5x);
+  width: 100%;
+  margin: 0;
   padding: var(--sbb-spacing-fixed-3x);
+  border: var(--sbb-border-width-1x) solid transparent;
   border-radius: var(--sbb-border-radius-4x);
   background-color: var(--sbb-background-color-1);
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.place:hover {
+  border-color: var(--sbb-border-color-4);
+}
+
+.place:active {
+  background-color: var(--sbb-background-color-3);
+}
+
+.place:focus-visible {
+  outline: var(--sbb-focus-outline-width, 2px) solid var(--sbb-focus-outline-color, currentColor);
+  outline-offset: var(--sbb-spacing-fixed-1x);
+}
+
+.qrIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--sbb-border-radius-infinity);
+  background-color: var(--sbb-background-color-3);
 }
 
 .noPhoto {
@@ -43,6 +74,7 @@
 }
 
 .name {
+  display: block;
   margin: 0;
   font-size: var(--sbb-text-font-size-m);
   font-weight: bold;
@@ -50,6 +82,7 @@
 }
 
 .line {
+  display: block;
   overflow: hidden;
   margin: 0;
   color: var(--sbb-color-3);
@@ -64,6 +97,23 @@
   gap: var(--sbb-spacing-fixed-2x);
   margin: 0;
   color: var(--sbb-color-4);
+  font-size: var(--sbb-text-font-size-xs);
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sbb-spacing-fixed-1x) var(--sbb-spacing-fixed-4x);
+}
+
+.hint {
+  display: flex;
+  align-items: center;
+  gap: var(--sbb-spacing-fixed-2x);
+  margin: 0;
+  color: var(--sbb-color-3);
   font-size: var(--sbb-text-font-size-xs);
 }
 
