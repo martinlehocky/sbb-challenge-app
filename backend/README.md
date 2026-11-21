@@ -109,6 +109,8 @@ and is skipped if it has not been built.
 | POST | `/voice/speak` | Text to audio (mp3 or wav) |
 | POST | `/voice/ask` | Audio in, then advice out (optionally with spoken audio as base64) |
 | POST | `/voice/ask-text` | Same as `/voice/ask`, with typed text |
+| POST | `/question` | Kiosk help desk: answers a question from facts only (trip + alternatives, disruptions near the station, `extra_facts` from the kiosk); rejects answers with times not in the facts; returns `trip_destination` for trip questions and `debug.facts` |
+| POST | `/question/voice` | Same with a recording (speech to text first) |
 
 Times are ISO 8601 and use Swiss local time when no offset is given. **The disruption data covers
 September 2026**, so pass an `at` from then to see live-looking disruptions, for example:

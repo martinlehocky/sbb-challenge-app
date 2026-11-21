@@ -239,3 +239,58 @@ def test_parse_json_content():
     assert parse_json_content('<think>hmm</think> Sure: {"a": 2}') == {"a": 2}
     with pytest.raises(ValueError):
         parse_json_content("no json here")
+
+
+# ---------------------------------------------------------------- assistant (questions at the kiosk)
+
+def test_question_answered_from_facts(client, fake):
+    fake.chat_answers = [{"answer": "Your trip to Delta is affected; take the next connection.", "answered": True}]
+    r = client.post("/api/v1/question", json={"question": "Is my train on time?", "station": str(A),
+                                               "destination": str(D), "at": AT, "lang": "en",
+                                               "extra_facts": ["Cafés one floor down"]})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["answered"] is True and body["answer"].startswith("Your trip to Delta")
+    facts = body["debug"]["facts"]
+    assert any(f.startswith("Trip asked about: Alpha to Delta") for f in facts)
+    assert "Station tip: Cafés one floor down" in facts
+    sent = json.loads(fake.requests[-1].content)
+    assert "FACTS:" in sent["messages"][1]["content"] and "QUESTION: Is my train on time?" in sent["messages"][1]["content"]
+
+
+def test_question_with_invented_time_is_rejected(client, fake):
+    fake.chat_answers = [{"answer": "Your train leaves at 23:59.", "answered": True}]
+    r = client.post("/api/v1/question", json={"question": "When does it leave?", "station": str(A),
+                                               "destination": str(D), "at": AT})
+    body = r.json()
+    assert body["answered"] is False and "info point" in body["answer"]
+    assert "23:59" in body["debug"]["rejected"]
+
+
+def test_question_about_a_trip_offers_the_destination(client, fake):
+    fake.chat_answers = [
+        {"origin": None, "destination": "Delta", "language": "en"},  # trip extraction
+        {"answer": "There are trains to Delta.", "answered": True},
+    ]
+    r = client.post("/api/v1/question", json={"question": "I need to get to Delta", "station": str(A), "at": AT})
+    body = r.json()
+    assert body["trip_destination"]["name"] == "Delta"
+    assert body["debug"]["trip_intent"]["destination"] == "Delta"
+
+
+def test_question_without_ai(client_no_ai):
+    r = client_no_ai.post("/api/v1/question", json={"question": "Where is my train?", "station": str(A), "at": AT})
+    body = r.json()
+    assert r.status_code == 200 and body["answered"] is False and "info point" in body["answer"]
+
+
+def test_spoken_question(client, fake):
+    fake.chat_answers = [
+        {"origin": "Alpha", "destination": "Delta", "language": "en"},
+        {"answer": "Trains run from Alpha to Delta.", "answered": True},
+    ]
+    r = client.post("/api/v1/question/voice", files={"file": ("q.wav", b"RIFF", "audio/wav")},
+                    data={"station": str(A), "at": AT, "extra_facts": json.dumps(["A tip"])})
+    body = r.json()
+    assert body["question"] == "from Alpha to Delta please"
+    assert body["answered"] is True and body["debug"]["speech_to_text"]["model"]

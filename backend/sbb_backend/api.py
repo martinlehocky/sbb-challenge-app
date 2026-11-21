@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -20,6 +21,7 @@ from .ai import AIError, TogetherClient
 from .config import Settings, get_settings
 from .db import connect
 from .services.advisor import Advisor
+from .services.assistant import Assistant
 from .services.disruptions import DisruptionStore
 from .services.location import LocationService
 from .services.planner import Planner
@@ -58,6 +60,7 @@ class Services:
     advisor: Advisor
     location: LocationService
     ai: TogetherClient
+    assistant: Assistant
 
 
 def build_services(settings: Settings, ai_transport: httpx.BaseTransport | None = None) -> Services:
@@ -69,7 +72,8 @@ def build_services(settings: Settings, ai_transport: httpx.BaseTransport | None 
     ai = TogetherClient(settings, transport=ai_transport)
     advisor = Advisor(stations, disruptions, planner, ai, settings.disruption_radius_m)
     location = LocationService(stations, disruptions, ai)
-    return Services(settings, meta, stations, disruptions, planner, advisor, location, ai)
+    assistant = Assistant(stations, disruptions, advisor, ai)
+    return Services(settings, meta, stations, disruptions, planner, advisor, location, ai, assistant)
 
 
 # ---------------------------------------------------------------------------- request bodies
@@ -95,6 +99,16 @@ class LocationRequest(BaseModel):
     interest: Literal["eat", "explore", "rest", "any"] = "any"
     lang: Lang = "en"
     suggestions: bool = Field(False, description="Ask the AI for things to do nearby")
+
+
+class QuestionRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=500)
+    station: str = Field(..., description="Kiosk station (id or name)")
+    at: str | None = None
+    lang: Lang = "en"
+    destination: str | None = Field(None, description="The traveller's destination, when the question is about their trip")
+    extra_facts: list[str] = Field(default_factory=list, max_length=40,
+                                   description="More facts the kiosk knows (e.g. hand-written station tips)")
 
 
 class SpeakRequest(BaseModel):
@@ -275,24 +289,21 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
             raise ai_http_error(exc) from exc
         return Response(content=result.audio, media_type=result.content_type)
 
-    @app.post("/api/v1/voice/ask", tags=["voice"])
-    async def voice_ask(file: UploadFile = File(...), station: str | None = Form(None, description="Kiosk station (id or name), used when no origin is said"),
-                        at: str | None = Form(None), lang: Lang = Form("en"),
-                        with_audio: bool = Form(False)) -> dict:
-        """Speech in, advice out: transcribe, find the trip, advise, and optionally speak the answer."""
+    async def transcribe_request(file: UploadFile, station: str | None, lang: str) -> tuple[str, dict]:
+        """Speech to text for kiosk requests. Returns (transcript or "" if no speech, debug info)."""
         audio = await read_audio(file)
         s = svc()
+        hint = STT_PROMPT
+        if station:
+            kiosk = s.stations.resolve(station)
+            if kiosk and kiosk.name not in hint:
+                hint = f"{kiosk.name}, {hint}"
+        name = file.filename or "audio"
+        t0 = time.perf_counter()
         try:
-            hint = STT_PROMPT
-            if station:
-                kiosk = s.stations.resolve(station)
-                if kiosk and kiosk.name not in hint:
-                    hint = f"{kiosk.name}, {hint}"
             # No language given to Whisper first: travellers may speak another language than the screen shows.
-            # Short clips are sometimes detected as an unrelated language (and then translated into it), so
-            # anything outside the kiosk languages is transcribed again in the screen language.
-            name = file.filename or "audio"
-            t0 = time.perf_counter()
+            # Short clips are sometimes detected as an unrelated language (and translated into it), so anything
+            # outside the kiosk languages is transcribed again in the screen language.
             transcript, detected = await run_in_threadpool(s.ai.transcribe_with_language, audio, name,
                                                            file.content_type, None, hint)
             stt = {"model": settings.together_stt_model, "first_transcript": transcript,
@@ -301,12 +312,51 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
             if detected is not None and detected.lower() not in KIOSK_LANGUAGES:
                 transcript = await run_in_threadpool(s.ai.transcribe, audio, name, file.content_type, lang, hint)
                 stt["retried_in"] = lang
-            stt["ms"] = round((time.perf_counter() - t0) * 1000)
         except AIError as exc:
             raise ai_http_error(exc) from exc
-        echo = bool(transcript.strip()) and is_prompt_echo(transcript)
-        stt["prompt_echo"] = echo
-        if not transcript.strip() or echo:
+        stt["ms"] = round((time.perf_counter() - t0) * 1000)
+        stt["prompt_echo"] = bool(transcript.strip()) and is_prompt_echo(transcript)
+        if stt["prompt_echo"]:
+            transcript = ""
+        return transcript.strip(), stt
+
+    def answer_question(question: str, station: str, at: str | None, lang: str, destination: str | None,
+                        extra_facts: list[str]) -> dict:
+        s = svc()
+        kiosk = station_or_404(station)
+        dest = station_or_404(destination) if destination else None
+        return s.assistant.answer(question, kiosk, when(at), lang=lang, destination=dest, extra_facts=extra_facts)
+
+    @app.post("/api/v1/question", tags=["assistant"])
+    def question(req: QuestionRequest) -> dict:
+        """Answer a traveller's question at the kiosk from facts only (journey, disruptions, station tips)."""
+        return answer_question(req.question, req.station, req.at, req.lang, req.destination, req.extra_facts)
+
+    @app.post("/api/v1/question/voice", tags=["assistant"])
+    async def question_voice(file: UploadFile = File(...), station: str = Form(...), at: str | None = Form(None),
+                             lang: Lang = Form("en"), destination: str | None = Form(None),
+                             extra_facts: str | None = Form(None, description="JSON list of strings")) -> dict:
+        """Spoken question: speech to text, then the same as /question."""
+        transcript, stt = await transcribe_request(file, station, lang)
+        if not transcript:
+            return {"question": "", "answer": None, "answered": False, "trip_destination": None,
+                    "debug": {"speech_to_text": stt}, "error": "No speech recognised"}
+        try:
+            facts = json.loads(extra_facts) if extra_facts else []
+            facts = [str(f) for f in facts][:40] if isinstance(facts, list) else []
+        except ValueError:
+            facts = []
+        out = await run_in_threadpool(answer_question, transcript, station, at, lang, destination, facts)
+        out["debug"] = {"speech_to_text": stt, **out.get("debug", {})}
+        return out
+
+    @app.post("/api/v1/voice/ask", tags=["voice"])
+    async def voice_ask(file: UploadFile = File(...), station: str | None = Form(None, description="Kiosk station (id or name), used when no origin is said"),
+                        at: str | None = Form(None), lang: Lang = Form("en"),
+                        with_audio: bool = Form(False)) -> dict:
+        """Speech in, advice out: transcribe, find the trip, advise, and optionally speak the answer."""
+        transcript, stt = await transcribe_request(file, station, lang)
+        if not transcript:
             return {"transcript": "", "understood": {"origin": None, "destination": None, "method": "none",
                                                      "note": "No speech recognised"},
                     "advice": None, "error": "No speech recognised", "debug": {"speech_to_text": stt}}
