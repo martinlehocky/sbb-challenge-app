@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getMessages, type Messages } from '@/lib/i18n/messages';
 import { withScenario } from '@/lib/scenario';
 import type { Scenario, Trip } from '@/lib/types';
@@ -13,15 +13,29 @@ import { SbbIcon, SbbLoadingIndicatorCircle, SbbStatus } from '../sbb';
 import styles from './ScanScreen.module.css';
 
 const STEP_MS = 1000;
+/** How often the camera picture is checked for a QR code. */
+const SCAN_EVERY_MS = 150;
+/** Width the picture is scaled to before decoding (enough for a QR code held up to the camera). */
+const DECODE_WIDTH = 640;
 
-/** Screen 2 · Scanning ticket. */
+type Camera = 'starting' | 'live' | 'none';
+
+/**
+ * Screen 2 · Scanning ticket. Demo: ANY QR code shown to the camera counts as the traveller's ticket and opens
+ * the demo trip (nothing in the code is read). Without a camera the steps run by themselves, as before.
+ */
 export function ScanScreen({ trip, scenario }: { trip: Trip; scenario: Scenario }) {
   const router = useRouter();
   const t = getMessages(scenario.lang);
   const resultHref = withScenario('/kiosk/result', scenario);
   const route = `${trip.ticket.from.name} → ${trip.ticket.to.name}`;
+  const [camera, setCamera] = useState<Camera>('starting');
+  const [found, setFound] = useState(false);
 
-  const steps = [t.scan.recognised(route), t.scan.checking, t.scan.finding];
+  // With a live camera, the first step waits for a QR code; once one is seen, it reads "Ticket recognised".
+  const waiting = camera === 'live' && !found;
+  const steps = [waiting ? t.scan.waiting : t.scan.recognised(route), t.scan.checking, t.scan.finding];
+  const running = found || camera === 'none';
 
   // Index of the step in progress; steps before it are done.
   const [active, setActive] = useState(0);
@@ -30,14 +44,20 @@ export function ScanScreen({ trip, scenario }: { trip: Trip; scenario: Scenario 
     router.prefetch(resultHref);
   }, [router, resultHref]);
 
+  const onDetected = useCallback(() => {
+    setFound(true);
+    setActive(1); // "Ticket recognised" is done at once
+  }, [setFound, setActive]);
+
   useEffect(() => {
+    if (!running) return;
     if (active < steps.length) {
-      const t = setTimeout(() => setActive((a) => a + 1), STEP_MS);
-      return () => clearTimeout(t);
+      const timer = setTimeout(() => setActive((a) => a + 1), STEP_MS);
+      return () => clearTimeout(timer);
     }
-    const t = setTimeout(() => router.push(resultHref), 400);
-    return () => clearTimeout(t);
-  }, [active, steps.length, router, resultHref]);
+    const timer = setTimeout(() => router.push(resultHref), 400);
+    return () => clearTimeout(timer);
+  }, [running, active, steps.length, router, resultHref]);
 
   return (
     <KioskFrame lang={scenario.lang}>
@@ -62,7 +82,7 @@ export function ScanScreen({ trip, scenario }: { trip: Trip; scenario: Scenario 
           lead={t.scan.lead}
         />
 
-        <Viewfinder trip={trip} t={t} />
+        <Viewfinder trip={trip} t={t} found={found} onCamera={setCamera} onDetected={onDetected} />
 
         <ol className={styles.steps} aria-live="polite">
           {steps.map((text, i) => {
@@ -93,42 +113,132 @@ export function ScanScreen({ trip, scenario }: { trip: Trip; scenario: Scenario 
   );
 }
 
+/** A QR decoder: the browser's own (Chrome on macOS, Android) or jsQR as fallback. Null = nothing found. */
+type Decoder = (video: HTMLVideoElement) => Promise<string | null>;
+
+interface NativeBarcodeDetector {
+  detect(source: CanvasImageSource): Promise<{ rawValue: string }[]>;
+}
+interface NativeBarcodeDetectorClass {
+  new (options: { formats: string[] }): NativeBarcodeDetector;
+  getSupportedFormats(): Promise<string[]>;
+}
+
+async function makeDecoder(): Promise<Decoder> {
+  const Native = (window as unknown as { BarcodeDetector?: NativeBarcodeDetectorClass }).BarcodeDetector;
+  if (Native) {
+    try {
+      if ((await Native.getSupportedFormats()).includes('qr_code')) {
+        const detector = new Native({ formats: ['qr_code'] });
+        return async (video) => (await detector.detect(video))[0]?.rawValue ?? null;
+      }
+    } catch {
+      // fall through to jsQR
+    }
+  }
+  const { default: jsQR } = await import('jsqr');
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  return async (video) => {
+    if (!ctx) return null;
+    const width = Math.min(DECODE_WIDTH, video.videoWidth);
+    const height = Math.round((video.videoHeight * width) / video.videoWidth);
+    canvas.width = width;
+    canvas.height = height;
+    ctx.drawImage(video, 0, 0, width, height);
+    const image = ctx.getImageData(0, 0, width, height);
+    return jsQR(image.data, width, height, { inversionAttempts: 'attemptBoth' })?.data ?? null;
+  };
+}
+
 /**
- * Dark camera viewfinder. Shows the live webcam if the browser allows it,
- * otherwise a drawn ticket. Nothing is recorded or decoded yet.
+ * Dark camera viewfinder. Shows the live webcam if the browser allows it (otherwise a drawn ticket) and looks
+ * for a QR code in it. Frames are only decoded in the browser; nothing is recorded or sent anywhere.
  */
-function Viewfinder({ trip, t }: { trip: Trip; t: Messages }) {
+function Viewfinder({
+  trip,
+  t,
+  found,
+  onCamera,
+  onDetected,
+}: {
+  trip: Trip;
+  t: Messages;
+  found: boolean;
+  onCamera: (state: Camera) => void;
+  onDetected: (value: string) => void;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [live, setLive] = useState(false);
 
   useEffect(() => {
     let stream: MediaStream | undefined;
     let cancelled = false;
-    if (!navigator.mediaDevices?.getUserMedia) return;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      onCamera('none');
+      return;
+    }
     navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: 'user' }, audio: false })
+      .getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 } }, audio: false })
       .then((s) => {
         if (cancelled) {
-          s.getTracks().forEach((t) => t.stop());
+          s.getTracks().forEach((track) => track.stop());
           return;
         }
         stream = s;
         if (videoRef.current) {
           videoRef.current.srcObject = s;
           setLive(true);
+          onCamera('live');
         }
       })
       .catch(() => {
-        // No camera or permission denied: keep the drawn placeholder.
+        // No camera or permission denied: keep the drawn ticket, the steps run by themselves.
+        if (!cancelled) onCamera('none');
       });
     return () => {
       cancelled = true;
-      stream?.getTracks().forEach((t) => t.stop());
+      stream?.getTracks().forEach((track) => track.stop());
     };
-  }, []);
+  }, [onCamera]);
+
+  // Look for a QR code a few times per second until one is found.
+  useEffect(() => {
+    if (!live || found) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let decode: Decoder | null = null;
+    const tick = async () => {
+      if (stopped) return;
+      const video = videoRef.current;
+      if (video && video.readyState >= 2 && video.videoWidth > 0) {
+        try {
+          decode ??= await makeDecoder();
+          const value = await decode(video);
+          if (value !== null && !stopped) {
+            onDetected(value);
+            return;
+          }
+        } catch (err) {
+          console.warn('[scan] QR decoding failed:', err);
+        }
+      }
+      if (!stopped) timer = setTimeout(tick, SCAN_EVERY_MS);
+    };
+    void tick();
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [live, found, onDetected]);
 
   return (
-    <div className={styles.viewfinder} role="img" aria-label={t.scan.cameraView}>
+    <div
+      className={`${styles.viewfinder} ${found ? styles.found : ''}`}
+      role="img"
+      aria-label={t.scan.cameraView}
+      data-scan-state={found ? 'found' : live ? 'scanning' : 'idle'}
+    >
       <video ref={videoRef} className={styles.video} hidden={!live} autoPlay muted playsInline />
       {!live && (
         <div className={styles.ticket} aria-hidden="true">
@@ -147,7 +257,13 @@ function Viewfinder({ trip, t }: { trip: Trip; t: Messages }) {
       <span className={`${styles.corner} ${styles.tr}`} />
       <span className={`${styles.corner} ${styles.bl}`} />
       <span className={`${styles.corner} ${styles.br}`} />
-      <span className={styles.scanLine} />
+      {found ? (
+        <span className={styles.foundMark} aria-hidden="true">
+          <SbbIcon name="tick-medium" />
+        </span>
+      ) : (
+        <span className={styles.scanLine} />
+      )}
     </div>
   );
 }

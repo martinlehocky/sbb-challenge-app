@@ -13,6 +13,7 @@
     "@sbb-esta/lyne-elements-experimental": "5.13.3",
     "@sbb-esta/lyne-react": "5.13.3",
     "@sbb-esta/lyne-react-experimental": "5.13.3",
+    "jsqr": "^1.4.0",
     "next": "16.4.6",
     "react": "19.3.0",
     "react-dom": "19.3.0"

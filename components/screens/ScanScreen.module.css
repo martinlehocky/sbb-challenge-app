@@ -140,3 +140,26 @@
   color: var(--sbb-color-4);
   font-size: var(--sbb-text-font-size-xs);
 }
+
+/* A QR code was seen: green frame and a tick, then the result opens. */
+.found .corner {
+  border-color: var(--sbb-color-success);
+}
+
+.foundMark {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 6rem;
+  height: 6rem;
+  border-radius: var(--sbb-border-radius-infinity);
+  background-color: var(--sbb-color-success);
+  color: var(--sbb-color-white);
+}
+
+.foundMark sbb-icon {
+  --sbb-icon-svg-width: 3rem;
+  --sbb-icon-svg-height: 3rem;
+}
+
