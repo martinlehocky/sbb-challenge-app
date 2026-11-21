@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import type { QuestionDebug } from '@/lib/ai';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import type { ChatTurn, QuestionDebug } from '@/lib/ai';
 import { getMessages } from '@/lib/i18n/messages';
 import { withScenario } from '@/lib/scenario';
 import type { Lang, Scenario } from '@/lib/types';
@@ -13,7 +13,7 @@ import { KioskFooter, KioskFrame, KioskMain } from '../KioskFrame';
 import { KioskHeader } from '../KioskHeader';
 import { NavButton } from '../NavButton';
 import { ScreenIntro } from '../ScreenIntro';
-import { SbbButton, SbbCard, SbbFormField, SbbIcon, SbbNotification, SbbSecondaryButton } from '../sbb';
+import { SbbButton, SbbFormField, SbbIcon, SbbNotification, SbbSecondaryButton } from '../sbb';
 import styles from './AskScreen.module.css';
 
 /** Longest recording; the kiosk stops listening by itself after this. */
@@ -21,6 +21,10 @@ const MAX_RECORDING_MS = 12_000;
 /** Peak level (0-1) a recording must reach; below it we heard nothing (speech recognition would guess). */
 const MIN_PEAK_LEVEL = 0.04;
 const MIME_TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+/** A public kiosk: the conversation is deleted after this long without use. */
+const IDLE_CLEAR_MS = 120_000;
+/** Messages kept on screen (oldest dropped first). */
+const MAX_MESSAGES = 30;
 
 interface QuestionResponse {
   question: string;
@@ -33,21 +37,31 @@ interface QuestionResponse {
   debug?: QuestionDebug;
 }
 
-type Phase =
-  | { kind: 'idle' }
-  | { kind: 'listening' }
-  | { kind: 'thinking' }
+type Trip = { id: string; name: string };
+
+/** One line of the chat. "notice" = a kiosk hint (heard nothing, error); it is not sent back to the AI. */
+type ChatMessage =
+  | { id: string; role: 'traveller'; text: string; via: 'voice' | 'text' }
   | {
-      kind: 'answer';
-      question: string;
-      answer: string;
+      id: string;
+      role: 'kiosk';
+      text: string;
       answered: boolean;
-      answerLang: Lang;
-      trip: { id: string; name: string } | null;
+      /** Language of the answer (the question's language, which may differ from the screen language). */
+      lang: Lang;
+      trip: Trip | null;
       /** The kiosk asks back ("Which one do you mean?") with one button per station. */
-      choices: { id: string; name: string }[];
+      choices: Trip[];
     }
-  | { kind: 'problem'; message: string };
+  | { id: string; role: 'notice'; text: string };
+
+type Phase = 'idle' | 'listening' | 'thinking';
+
+interface SavedChat {
+  messages: ChatMessage[];
+  context: Trip | null;
+  at: number;
+}
 
 function extensionFor(mime: string): string {
   if (mime.includes('mp4')) return 'm4a';
@@ -55,10 +69,45 @@ function extensionFor(mime: string): string {
   return 'webm';
 }
 
+let counter = 0;
+const newId = () => `m${Date.now().toString(36)}-${(counter += 1)}`;
+
+/** sessionStorage can be blocked (private mode, kiosk policies): the chat then simply lives in memory. */
+function loadChat(key: string): SavedChat | null {
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    const saved = JSON.parse(raw) as SavedChat;
+    if (!Array.isArray(saved.messages) || Date.now() - saved.at > IDLE_CLEAR_MS) {
+      sessionStorage.removeItem(key);
+      return null;
+    }
+    // Chats saved by an older version may miss newer fields.
+    const messages = saved.messages.map((m) =>
+      m.role === 'kiosk' ? { ...m, choices: Array.isArray(m.choices) ? m.choices : [], lang: m.lang ?? 'en' } : m,
+    );
+    return { ...saved, messages };
+  } catch {
+    return null;
+  }
+}
+
+function saveChat(key: string, chat: SavedChat | null) {
+  try {
+    if (chat && chat.messages.length) sessionStorage.setItem(key, JSON.stringify(chat));
+    else sessionStorage.removeItem(key);
+  } catch {
+    // storage not available: nothing to do
+  }
+}
+
 /**
- * "Ask a question": the traveller speaks or types a question. The backend gathers facts (their journey,
- * disruptions, station tips) and the AI answers from those facts only, as text on the screen.
- * `aboutTrip`: asked from the result screen, so the question is about the traveller's journey.
+ * "Ask a question" as a chat: the traveller speaks or types, every question and answer stays on screen,
+ * and follow-up questions ("and which platform?") are understood because the conversation so far, and the
+ * trip already discussed, are sent with each question. The backend still answers from facts only.
+ * The chat survives a visit to "Show my next train" and back (sessionStorage), and is deleted after
+ * 2 minutes without use or with "New conversation".
+ * `aboutTrip`: asked from the result screen, so the questions are about the traveller's journey.
  */
 export function AskScreen({
   now,
@@ -74,14 +123,62 @@ export function AskScreen({
   const t = getMessages(scenario.lang);
   const status = useAiStatus();
   const canAsk = status?.ai ?? false;
-  const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
+  const storageKey = `sbb-kiosk-chat:${aboutTrip ? 'trip' : 'help'}`;
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  /** Destination found earlier in this conversation ("I need to get to Bern"), for follow-up questions. */
+  const [context, setContext] = useState<Trip | null>(null);
+  const [phase, setPhase] = useState<Phase>('idle');
   const [text, setText] = useState('');
   const recorder = useRef<MediaRecorder | null>(null);
   const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const meter = useRef<{ ctx: AudioContext; timer: ReturnType<typeof setInterval>; peak: number } | null>(null);
   const recordingStart = useRef(0);
+  const lastActivity = useRef(0);
+  const restored = useRef(false);
+  const endRef = useRef<HTMLDivElement | null>(null);
   const [level, setLevel] = useState({ now: 0, peak: 0 });
   const [lastDebug, setLastDebug] = useState<AskDebugState | null>(null);
+
+  const touch = () => {
+    lastActivity.current = Date.now();
+  };
+
+  // Restore the conversation after coming back (e.g. from "Show my next train"), if it is recent.
+  useEffect(() => {
+    const saved = loadChat(storageKey);
+    if (saved) {
+      setMessages(saved.messages);
+      setContext(saved.context);
+      lastActivity.current = saved.at;
+    }
+    restored.current = true;
+  }, [storageKey]);
+
+  // Keep it for this browser tab only, with the time of the last activity.
+  useEffect(() => {
+    if (!restored.current) return;
+    saveChat(storageKey, { messages, context, at: lastActivity.current || Date.now() });
+  }, [messages, context, storageKey]);
+
+  const clearChat = useCallback(() => {
+    setMessages([]);
+    setContext(null);
+    setText('');
+    saveChat(storageKey, null);
+  }, [storageKey]);
+
+  // Public kiosk: delete the conversation after 2 minutes without use.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (phase === 'idle' && messages.length && Date.now() - lastActivity.current > IDLE_CLEAR_MS) clearChat();
+    }, 5_000);
+    return () => clearInterval(timer);
+  }, [phase, messages.length, clearChat]);
+
+  // Show the newest message.
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
+  }, [messages.length, phase]);
 
   useEffect(
     () => () => {
@@ -96,6 +193,8 @@ export function AskScreen({
     },
     [],
   );
+
+  const add = (...items: ChatMessage[]) => setMessages((list) => [...list, ...items].slice(-MAX_MESSAGES));
 
   /** Tracks the loudness of the recording, so silence is not sent to speech recognition. */
   const startMeter = (stream: MediaStream) => {
@@ -134,13 +233,21 @@ export function AskScreen({
     return m.peak;
   };
 
-  const ask = async (body: FormData, info: AskDebugState) => {
-    setPhase({ kind: 'thinking' });
+  /** The conversation so far, as sent to the AI (kiosk hints are left out). */
+  const historyOf = (list: ChatMessage[]): ChatTurn[] =>
+    list.flatMap((m) => (m.role === 'notice' ? [] : [{ role: m.role, text: m.text }]));
+
+  const ask = async (body: FormData, info: AskDebugState, via: 'voice' | 'text') => {
+    touch();
+    setPhase('thinking');
     setLastDebug(info);
     body.set('lang', scenario.lang);
+    body.set('history', JSON.stringify(historyOf(messages)));
     if (aboutTrip) {
       body.set('about', 'trip');
       if (scenario.to) body.set('to', scenario.to);
+    } else if (context) {
+      body.set('context', context.id);
     }
     const started = performance.now();
     try {
@@ -153,29 +260,39 @@ export function AskScreen({
       const data = (await res.json()) as QuestionResponse;
       setLastDebug({ ...info, httpStatus: res.status, roundTripMs, server: data.debug });
       if (!data.question || !data.answer) {
-        setPhase({ kind: 'problem', message: t.ask.heardNothing });
+        add({ id: newId(), role: 'notice', text: t.ask.heardNothing });
         return;
       }
-      setPhase({
-        kind: 'answer',
-        question: data.question,
-        answer: data.answer,
+      const trip = data.tripDestination;
+      // A typed question is already on screen; a spoken one appears as it was understood.
+      const question: ChatMessage[] =
+        via === 'voice' ? [{ id: newId(), role: 'traveller', text: data.question, via: 'voice' }] : [];
+      add(...question, {
+        id: newId(),
+        role: 'kiosk',
+        text: data.answer,
         answered: data.answered,
-        answerLang: data.answerLang ?? scenario.lang,
-        trip: data.tripDestination,
+        lang: data.answerLang ?? scenario.lang,
+        trip,
         choices: data.clarify ? (data.choices ?? []) : [],
       });
+      // The trip found becomes the conversation's trip for follow-ups ("about my trip" keeps the ticket's).
+      if (trip && !aboutTrip) setContext(trip);
     } catch (err) {
       console.error('[ask] failed:', err);
       setLastDebug((d) => (d && !d.clientError ? { ...d, clientError: (err as Error).message } : d));
-      setPhase({ kind: 'problem', message: t.ask.failed });
+      add({ id: newId(), role: 'notice', text: t.ask.failed });
+    } finally {
+      touch();
+      setPhase('idle');
     }
   };
 
   const startListening = async () => {
+    touch();
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       setLastDebug({ input: 'voice', clientError: 'This browser has no microphone recording (getUserMedia/MediaRecorder)' });
-      setPhase({ kind: 'problem', message: t.ask.micDenied });
+      add({ id: newId(), role: 'notice', text: t.ask.micDenied });
       return;
     }
     let stream: MediaStream;
@@ -183,7 +300,7 @@ export function AskScreen({
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
       setLastDebug({ input: 'voice', clientError: `Microphone not available: ${(err as Error).name} ${(err as Error).message}` });
-      setPhase({ kind: 'problem', message: t.ask.micDenied });
+      add({ id: newId(), role: 'notice', text: t.ask.micDenied });
       return;
     }
     const mimeType = MIME_TYPES.find((m) => MediaRecorder.isTypeSupported(m));
@@ -207,18 +324,20 @@ export function AskScreen({
       };
       if (tooQuiet) {
         setLastDebug({ input: 'voice', recording });
-        setPhase({ kind: 'problem', message: t.ask.heardNothing });
+        add({ id: newId(), role: 'notice', text: t.ask.heardNothing });
+        touch();
+        setPhase('idle');
         return;
       }
       const form = new FormData();
       form.set('audio', audio, `speech.${extensionFor(type)}`);
-      void ask(form, { input: 'voice', recording });
+      void ask(form, { input: 'voice', recording }, 'voice');
     };
     recorder.current = rec;
     startMeter(stream);
     recordingStart.current = performance.now();
     rec.start();
-    setPhase({ kind: 'listening' });
+    setPhase('listening');
     stopTimer.current = setTimeout(() => rec.state !== 'inactive' && rec.stop(), MAX_RECORDING_MS);
   };
 
@@ -229,18 +348,16 @@ export function AskScreen({
 
   const submitText = (event: FormEvent) => {
     event.preventDefault();
-    if (!text.trim()) return;
-    const form = new FormData();
-    form.set('text', text.trim());
-    void ask(form, { input: 'text', typed: text.trim() });
-  };
-
-  const reset = () => {
+    const question = text.trim();
+    if (!question || phase !== 'idle') return;
+    add({ id: newId(), role: 'traveller', text: question, via: 'text' });
     setText('');
-    setPhase({ kind: 'idle' });
+    const form = new FormData();
+    form.set('text', question);
+    void ask(form, { input: 'text', typed: question }, 'text');
   };
 
-  const busy = phase.kind === 'listening' || phase.kind === 'thinking';
+  const busy = phase !== 'idle';
   const back = aboutTrip
     ? { href: withScenario('/kiosk/result', scenario), label: t.common.back, icon: 'chevron-small-left-small' }
     : { href: withScenario('/kiosk', { ...scenario, to: undefined }), label: t.common.cancel, icon: 'cross-small' };
@@ -254,12 +371,21 @@ export function AskScreen({
             {back.label}
           </NavButton>
         }
+        end={
+          messages.length > 0 && (
+            <SbbSecondaryButton size="m" iconName="arrows-circle-small" onClick={clearChat} disabled={busy}>
+              {t.ask.newChat}
+            </SbbSecondaryButton>
+          )
+        }
       />
       <KioskMain className={styles.main}>
-        <ScreenIntro
-          title={aboutTrip ? t.ask.titleTrip : t.ask.title}
-          lead={aboutTrip ? t.ask.leadTrip : t.ask.lead}
-        />
+        {messages.length === 0 && (
+          <ScreenIntro
+            title={aboutTrip ? t.ask.titleTrip : t.ask.title}
+            lead={aboutTrip ? t.ask.leadTrip : t.ask.lead}
+          />
+        )}
 
         {status && !canAsk && (
           <SbbNotification type="info" readOnly animation="none" className={styles.notice}>
@@ -267,35 +393,62 @@ export function AskScreen({
           </SbbNotification>
         )}
 
-        {canAsk && (phase.kind === 'idle' || phase.kind === 'listening') && (
-          <>
-            <div className={styles.voice}>
-              {phase.kind === 'listening' ? (
-                <>
-                  <SbbSecondaryButton size="l" iconName="stop-small" className={styles.wide} onClick={stopListening}>
-                    {t.ask.stop}
-                  </SbbSecondaryButton>
-                  <p className={styles.listening} role="status">
-                    <span className={styles.dot} aria-hidden="true" />
-                    {t.ask.listening}
-                  </p>
-                </>
-              ) : (
-                <SbbButton size="l" iconName="microphone-small" className={styles.wide} onClick={startListening}>
-                  {t.ask.speak}
-                </SbbButton>
-              )}
-            </div>
+        {(messages.length > 0 || phase === 'thinking') && (
+          <ol className={styles.chat} aria-live="polite" aria-relevant="additions">
+            {messages.map((m) => (
+              <Message key={m.id} message={m} scenario={scenario} t={t} />
+            ))}
+            {phase === 'thinking' && (
+              <li className={styles.theirs}>
+                <div className={`${styles.bubble} ${styles.kiosk}`}>
+                  <AiWorking text={t.ask.thinking} />
+                </div>
+              </li>
+            )}
+          </ol>
+        )}
+        <div ref={endRef} />
+
+        {debug && <AskDebugPanel live={phase === 'listening'} level={level.now} loudest={level.peak} last={lastDebug} />}
+      </KioskMain>
+      <KioskFooter>
+        {canAsk && (
+          <div className={styles.composer}>
+            {phase === 'listening' ? (
+              <div className={styles.voice}>
+                <p className={styles.listening} role="status">
+                  <span className={styles.dot} aria-hidden="true" />
+                  {t.ask.listening}
+                </p>
+                <SbbSecondaryButton size="l" iconName="stop-small" className={styles.wide} onClick={stopListening}>
+                  {t.ask.stop}
+                </SbbSecondaryButton>
+              </div>
+            ) : (
+              <SbbButton
+                size="l"
+                iconName="microphone-small"
+                className={styles.wide}
+                onClick={startListening}
+                disabled={busy}
+              >
+                {messages.length ? `${t.ask.speak} · ${t.ask.followUp}` : t.ask.speak}
+              </SbbButton>
+            )}
 
             <form className={styles.form} onSubmit={submitText}>
               <SbbFormField size="l" className={styles.field}>
-                <label>{t.ask.inputLabel}</label>
+                <label>{messages.length ? t.ask.followUp : t.ask.inputLabel}</label>
                 <input
                   value={text}
-                  onChange={(e) => setText(e.target.value)}
+                  onChange={(e) => {
+                    touch();
+                    setText(e.target.value);
+                  }}
                   placeholder={t.ask.placeholder}
                   autoComplete="off"
                   enterKeyHint="send"
+                  maxLength={500}
                   disabled={busy}
                 />
               </SbbFormField>
@@ -303,74 +456,89 @@ export function AskScreen({
                 {t.ask.send}
               </SbbButton>
             </form>
-          </>
-        )}
-
-        {phase.kind === 'thinking' && (
-          <div className={styles.thinking}>
-            <AiWorking text={t.ask.thinking} />
           </div>
         )}
-
-        {phase.kind === 'answer' && (
-          <SbbCard color="white" className={styles.found} aria-live="polite">
-            <div className={styles.foundHead}>
-              <span className={styles.label}>{t.ask.yourQuestion}</span>
-              {phase.answered && <AiChip label={t.ai.label} />}
-            </div>
-            <p className={styles.transcript}>“{phase.question}”</p>
-            <span className={styles.label}>{t.ask.answer}</span>
-            {phase.answered || phase.choices.length > 0 ? (
-              <p className={styles.answer} lang={phase.answerLang}>
-                {phase.answer}
-              </p>
-            ) : (
-              <SbbNotification type="info" readOnly animation="none" className={styles.cantAnswer} lang={phase.answerLang}>
-                {phase.answer}
-              </SbbNotification>
-            )}
-            <div className={styles.actions}>
-              {phase.choices.map((c) => (
-                <NavButton key={c.id} href={withScenario('/kiosk/result', { ...scenario, to: c.id })} iconName="train-small">
-                  {c.name}
-                </NavButton>
-              ))}
-              {phase.trip && (
-                <NavButton href={withScenario('/kiosk/result', { ...scenario, to: phase.trip.id })}>
-                  {t.ask.showTrain} · {phase.trip.name}
-                </NavButton>
-              )}
-              {aboutTrip && phase.choices.length === 0 && (
-                <NavButton href={withScenario('/kiosk/result', scenario)} variant={phase.trip ? 'secondary' : 'primary'}>
-                  {t.ask.backToTrip}
-                </NavButton>
-              )}
-              <SbbSecondaryButton size="l" onClick={reset}>
-                {t.ask.askAnother}
-              </SbbSecondaryButton>
-            </div>
-          </SbbCard>
-        )}
-
-        {phase.kind === 'problem' && (
-          <div className={styles.problem} aria-live="polite">
-            <SbbNotification type="warn" readOnly animation="none" className={styles.notice}>
-              {phase.message}
-            </SbbNotification>
-            <SbbButton size="l" onClick={reset} className={styles.wide}>
-              {t.ask.askAnother}
-            </SbbButton>
-          </div>
-        )}
-
-        {debug && <AskDebugPanel live={phase.kind === 'listening'} level={level.now} loudest={level.peak} last={lastDebug} />}
-      </KioskMain>
-      <KioskFooter>
         <p className={styles.privacy}>
           <SbbIcon name="lock-closed-small" />
-          {t.ask.privacy}
+          <span>
+            {t.ask.privacy} {t.ask.autoClear}
+          </span>
         </p>
       </KioskFooter>
     </KioskFrame>
+  );
+}
+
+/** One chat bubble: the traveller's question (right), the kiosk's answer (left), or a kiosk hint. */
+function Message({
+  message: m,
+  scenario,
+  t,
+}: {
+  message: ChatMessage;
+  scenario: Scenario;
+  t: ReturnType<typeof getMessages>;
+}) {
+  if (m.role === 'notice') {
+    return (
+      <li className={styles.noticeRow}>
+        <SbbNotification type="warn" readOnly animation="none" className={styles.notice}>
+          {m.text}
+        </SbbNotification>
+      </li>
+    );
+  }
+  if (m.role === 'traveller') {
+    return (
+      <li className={styles.mine}>
+        <div className={`${styles.bubble} ${styles.traveller}`}>
+          <span className={styles.who}>
+            {t.ask.you}
+            {m.via === 'voice' && (
+              <>
+                {' · '}
+                <SbbIcon name="microphone-small" className={styles.whoIcon} />
+                {t.ask.spoken}
+              </>
+            )}
+          </span>
+          <p className={styles.text}>{m.text}</p>
+        </div>
+      </li>
+    );
+  }
+  return (
+    <li className={styles.theirs}>
+      <div className={`${styles.bubble} ${styles.kiosk}`}>
+        <span className={styles.who}>
+          {t.welcome.product}
+          {m.answered && <AiChip label={t.ai.label} />}
+        </span>
+        {m.answered || m.choices.length > 0 ? (
+          <p className={styles.text} lang={m.lang}>
+            {m.text}
+          </p>
+        ) : (
+          <SbbNotification type="info" readOnly animation="none" className={styles.cantAnswer} lang={m.lang}>
+            {m.text}
+          </SbbNotification>
+        )}
+        {m.choices.map((c) => (
+          <NavButton
+            key={c.id}
+            href={withScenario('/kiosk/result', { ...scenario, to: c.id })}
+            iconName="train-small"
+            className={styles.tripButton}
+          >
+            {c.name}
+          </NavButton>
+        ))}
+        {m.trip && (
+          <NavButton href={withScenario('/kiosk/result', { ...scenario, to: m.trip.id })} className={styles.tripButton}>
+            {t.ask.showTrain} · {m.trip.name}
+          </NavButton>
+        )}
+      </div>
+    </li>
   );
 }

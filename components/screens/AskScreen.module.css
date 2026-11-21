@@ -6,11 +6,99 @@
   font-size: var(--sbb-text-font-size-s);
 }
 
+/* ---------------------------------------------------------------- chat */
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sbb-spacing-fixed-5x);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mine,
+.theirs {
+  display: flex;
+}
+
+.mine {
+  justify-content: flex-end;
+}
+
+.theirs {
+  justify-content: flex-start;
+}
+
+.noticeRow {
+  display: block;
+}
+
+.bubble {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sbb-spacing-fixed-2x);
+  max-width: 85%;
+  padding: var(--sbb-spacing-fixed-4x) var(--sbb-spacing-fixed-5x);
+  border-radius: var(--sbb-border-radius-8x);
+}
+
+/* The traveller's question: right, dark. */
+.traveller {
+  border-end-end-radius: var(--sbb-border-radius-2x);
+  background-color: var(--sbb-color-charcoal);
+  color: var(--sbb-color-white);
+}
+
+/* The kiosk's answer: left, light. */
+.kiosk {
+  border-end-start-radius: var(--sbb-border-radius-2x);
+  background-color: var(--sbb-color-milk);
+  color: var(--sbb-color-1);
+}
+
+.who {
+  display: flex;
+  align-items: center;
+  gap: var(--sbb-spacing-fixed-2x);
+  font-size: var(--sbb-text-font-size-xs);
+  font-weight: bold;
+  opacity: 0.85;
+}
+
+.whoIcon {
+  --sbb-icon-svg-width: var(--sbb-size-icon-ui-small);
+  --sbb-icon-svg-height: var(--sbb-size-icon-ui-small);
+}
+
+.text {
+  margin: 0;
+  font-size: var(--sbb-text-font-size-m);
+  line-height: var(--sbb-typo-line-height-heading);
+  white-space: pre-line;
+}
+
+.cantAnswer {
+  font-size: var(--sbb-text-font-size-s);
+}
+
+.tripButton {
+  margin-block-start: var(--sbb-spacing-fixed-2x);
+}
+
+/* ---------------------------------------------------------------- composer (always at the bottom) */
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sbb-spacing-fixed-4x);
+}
+
 .voice {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sbb-spacing-fixed-4x);
+  gap: var(--sbb-spacing-fixed-3x);
 }
 
 .wide {
@@ -60,71 +148,6 @@
   flex: 1;
 }
 
-.thinking {
-  display: flex;
-  justify-content: center;
-  padding-block: var(--sbb-spacing-fixed-10x);
-  font-size: var(--sbb-text-font-size-m);
-}
-
-.found {
-  --sbb-card-border-color: var(--sbb-border-color-1);
-  --sbb-card-border-width: var(--sbb-border-width-2x);
-  --sbb-card-border-radius: var(--sbb-border-radius-8x);
-  --sbb-card-padding-block-default: var(--sbb-spacing-fixed-6x);
-  --sbb-card-padding-inline-default: var(--sbb-spacing-fixed-8x);
-}
-
-.foundHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sbb-spacing-fixed-4x);
-}
-
-.label {
-  color: var(--sbb-color-4);
-  font-size: var(--sbb-text-font-size-xs);
-  font-weight: bold;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.transcript {
-  margin: var(--sbb-spacing-fixed-1x) 0 var(--sbb-spacing-fixed-4x);
-  font-size: var(--sbb-text-font-size-l);
-  font-style: italic;
-}
-
-.station {
-  display: flex;
-  align-items: center;
-  gap: var(--sbb-spacing-fixed-3x);
-  margin: 0 0 var(--sbb-spacing-fixed-5x);
-}
-
-.actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sbb-spacing-fixed-4x);
-}
-
-.actions > * {
-  width: 100%;
-}
-
-.problem {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sbb-spacing-fixed-6x);
-}
-
-.heard {
-  display: block;
-  margin-block-end: var(--sbb-spacing-fixed-2x);
-  font-style: italic;
-}
-
 .privacy {
   display: flex;
   align-items: center;
@@ -132,16 +155,4 @@
   margin: 0;
   color: var(--sbb-color-4);
   font-size: var(--sbb-text-font-size-xs);
-}
-
-.answer {
-  margin: var(--sbb-spacing-fixed-1x) 0 var(--sbb-spacing-fixed-6x);
-  font-size: var(--sbb-text-font-size-m);
-  line-height: var(--sbb-typo-line-height-heading);
-  white-space: pre-line;
-}
-
-.cantAnswer {
-  margin: var(--sbb-spacing-fixed-2x) 0 var(--sbb-spacing-fixed-6x);
-  font-size: var(--sbb-text-font-size-s);
 }
