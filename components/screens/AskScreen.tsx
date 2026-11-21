@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import type { ChatContext, ChatRoute, ChatTurn, QuestionDebug } from '@/lib/ai';
+import type { ChatContext, ChatRoute, ChatTurn, QuestionDebug, ChatPlace } from '@/lib/ai';
 import { getMessages } from '@/lib/i18n/messages';
 import { withScenario } from '@/lib/scenario';
 import type { Lang, Scenario } from '@/lib/types';
@@ -10,6 +10,7 @@ import { AiWorking } from '../ai/AiWorking';
 import { AskDebugPanel, type AskDebugState } from '../ai/AskDebugPanel';
 import { useAiStatus } from '../ai/useAiStatus';
 import { KioskFooter, KioskFrame, KioskMain } from '../KioskFrame';
+import { ChatPlaces } from '../ChatPlaces';
 import { KioskHeader } from '../KioskHeader';
 import { NavButton } from '../NavButton';
 import { ScreenIntro } from '../ScreenIntro';
@@ -38,6 +39,8 @@ interface QuestionResponse {
   context?: ChatContext | null;
   /** A trip with stops on the way: every part, the stays, and ideas for each stop. */
   route?: ChatRoute | null;
+  /** Real places from Google the answer recommends, shown with photos. */
+  places?: ChatPlace[];
   debug?: QuestionDebug;
 }
 
@@ -58,6 +61,8 @@ type ChatMessage =
       choices: Trip[];
       /** A trip with stops ("first Interlaken, then Bern"): the full route, and how long to stay if not known. */
       route?: ChatRoute | null;
+      /** Places from Google the answer recommends ("What can I do in Basel?"), shown with their photos. */
+      places?: ChatPlace[];
     }
   | { id: string; role: 'notice'; text: string };
 
@@ -310,6 +315,7 @@ export function AskScreen({
         trip,
         choices: data.clarify ? (data.choices ?? []) : [],
         route: data.route ?? null,
+        places: data.places ?? [],
       });
       // The trip this answer was about becomes the conversation's trip for follow-ups. An answer about no trip
       // ("where can I get a coffee?") keeps the old one. "About my trip" keeps the ticket's trip.
@@ -565,7 +571,7 @@ function Message({
   }
   // With buttons ("Show my next train · <station>", station choices) the bubble may use the full width,
   // so long station names are not cut off with "…".
-  const withActions = Boolean(m.trip) || m.choices.length > 0 || Boolean(m.route);
+  const withActions = Boolean(m.trip) || m.choices.length > 0 || Boolean(m.route) || Boolean(m.places?.length);
   return (
     <li className={styles.theirs}>
       <div className={`${styles.bubble} ${styles.kiosk} ${withActions ? styles.withActions : ''}`}>
@@ -582,6 +588,7 @@ function Message({
             {m.text}
           </SbbNotification>
         )}
+        {m.places && m.places.length > 0 && <ChatPlaces places={m.places} t={getMessages(m.lang)} lang={m.lang} />}
         {m.route && <RouteCard route={m.route} t={getMessages(m.lang)} lang={m.lang} onStay={onStay} />}
         {m.choices.map((c) => (
           <NavButton

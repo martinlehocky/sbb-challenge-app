@@ -217,7 +217,24 @@ export interface QuestionResult {
   context: ChatContext | null;
   /** A trip with stops on the way ("first Interlaken, then Bern"): every part, the stays, ideas per stop. */
   route: ChatRoute | null;
+  /** Real places from Google the answer recommends ("What can I do in Basel?"), shown with their photos. */
+  places: ChatPlace[];
   debug: QuestionDebug;
+}
+
+/** A place from Google Maps recommended in the chat. */
+export interface ChatPlace {
+  id: string;
+  name: string;
+  kind: 'eat' | 'explore';
+  typeLabel: string | null;
+  rating: number | null;
+  ratingCount: number | null;
+  walkMinutes: number;
+  /** The station the walking time is counted from. */
+  fromStation: string;
+  /** Served by Google; must be shown with its author. */
+  photo: { url: string; author: string | null } | null;
 }
 
 type Place = { id: string; name: string };
@@ -271,6 +288,17 @@ interface ApiQuestion {
     stays?: (number | null)[];
   } | null;
   route?: ApiRoute | null;
+  places?: {
+    id: string;
+    name: string;
+    kind: 'eat' | 'explore';
+    type_label: string | null;
+    rating: number | null;
+    rating_count: number | null;
+    walk_minutes: number;
+    from_station: string;
+    photo: { url: string; author: string | null } | null;
+  }[];
   debug?: QuestionDebug;
   error?: string;
 }
@@ -373,6 +401,17 @@ function toQuestionResult(data: ApiQuestion, screenLang: Lang): QuestionResult {
         }
       : null,
     route: data.route ? toRoute(data.route, lang) : null,
+    places: (data.places ?? []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      kind: p.kind,
+      typeLabel: p.type_label,
+      rating: p.rating,
+      ratingCount: p.rating_count,
+      walkMinutes: p.walk_minutes,
+      fromStation: p.from_station,
+      photo: p.photo?.url ? { url: p.photo.url, author: p.photo.author } : null,
+    })),
     debug: { ...data.debug, ...(data.error ? { error: data.error } : {}) },
   };
 }

@@ -134,24 +134,50 @@ def _disruption_lines(d: dict, label: str) -> list[str]:
     return out
 
 
-# "What can I do / eat in Bern?": words that ask for places (all four kiosk languages, lower case, word starts).
-_EAT_WORDS = ("eat", "food", "lunch", "dinner", "breakfast", "restaurant", "café", "cafe", "coffee", "hungry",
+# "What can I do / eat in Bern?": word starts that ask for places (all four kiosk languages). Matched at the start
+# of a word, so "do" in "when do I arrive" or "fare" in "welfare" do not count.
+_EAT_WORDS = ("eat", "food", "lunch", "dinner", "breakfast", "restaurant", "café", "cafe", "coffee", "hungry", "snack",
               "essen", "mittag", "frühstück", "kaffee", "hunger", "manger", "repas", "déjeuner", "dîner",
-              "mangiare", "pranzo", "cena", "colazione", "fame", "ristorante")
-_SEE_WORDS = ("do ", "see", "visit", "recommend", "interesting", "sight", "museum", "things to", "stuff",
-              "tun", "unternehmen", "sehen", "besuchen", "empfehl", "sehenswürd", "interessant", "ausflug",
-              "faire", "voir", "visiter", "recommand", "intéressant", "musée", "fare", "vedere", "visitare",
-              "consigl", "interessant", "museo", "attrazion")
+              "mangiare", "pranzo", "cena", "colazione", "fame", "ristorant")
+_SEE_WORDS = ("i do", "we do", "to do", "things", "stuff", "see", "visit", "recommend", "interesting", "sight",
+              "museum", "tip", "suggest", "idea", "explore", "tour",
+              "tun", "unternehmen", "sehen", "besuchen", "besichtig", "empfehl", "sehenswürd", "interessant",
+              "ausflug", "vorschl", "idee", "anschauen", "machen", "unternehm",
+              "faire", "voir", "visiter", "recommand", "intéressant", "musée", "conseil", "suggér", "idée",
+              "cosa fare", "da fare", "vedere", "visitare", "consigl", "museo", "attrazion", "suggeri")
+_EAT_RE = re.compile(r"(?<![\w])(" + "|".join(re.escape(w) for w in _EAT_WORDS) + ")", re.IGNORECASE)
+_SEE_RE = re.compile(r"(?<![\w])(" + "|".join(re.escape(w) for w in _SEE_WORDS) + ")", re.IGNORECASE)
 MAX_PLACE_FACTS = 5
+# When the AI gives no usable answer but there are places to show, this introduces the list instead of
+# "please ask staff" (the places themselves come from Google, not from the AI).
+PLACES_INTRO = {
+    "explore": {
+        "en": "Here are some recommendations in {town}:",
+        "de": "Hier einige Empfehlungen in {town}:",
+        "fr": "Voici quelques recommandations à {town}\u00a0:",
+        "it": "Ecco alcuni consigli a {town}:",
+    },
+    "eat": {
+        "en": "Here are some places to eat in {town}:",
+        "de": "Hier einige Orte zum Essen in {town}:",
+        "fr": "Voici quelques endroits où manger à {town}\u00a0:",
+        "it": "Ecco alcuni posti dove mangiare a {town}:",
+    },
+}
+PLACE_SCHEMA = {
+    "type": "object",
+    "properties": {"place": {"type": ["string", "null"],
+                             "description": "The Swiss town or station the question asks about, null if none"}},
+    "required": ["place"],
+}
 
 
 def places_wanted(question: str) -> list[str]:
     """Which kinds of places a question asks for: ['eat'], ['explore'], both, or none."""
-    q = f" {question.lower()} "
     kinds = []
-    if any(w in q for w in _EAT_WORDS):
+    if _EAT_RE.search(question):
         kinds.append("eat")
-    if any(w in q for w in _SEE_WORDS):
+    if _SEE_RE.search(question):
         kinds.append("explore")
     return kinds
 
@@ -218,6 +244,8 @@ class Assistant:
             "context": None,
             # A trip with stops on the way: every part, the stays, ideas for each stop (see _route).
             "route": None,
+            # Real places from Google the answer recommends, shown as a list with photos under the answer.
+            "places": [],
             "debug": debug,
         }
         if destination is None:
@@ -279,17 +307,61 @@ class Assistant:
                 facts.append(f"No connection from {origin.name} to {dest.name} could be found.")
         if plan["offer"] is not None:
             result["trip_destination"] = plan["offer"].to_dict()
-        facts += self._place_facts(question, dest if dest is not None else kiosk, kiosk, at, lang, debug)
-        return self._ai_answer(facts, question, kiosk, at, lang, screen_lang, history, extra_facts, result)
+        where = dest
+        if where is None and places_wanted(question):
+            # "What can I do in Basel?" is not a trip, but it is about Basel, not about the kiosk's station.
+            where = self._place_named(question, kiosk, debug)
+            if where is not None and where.id != kiosk.id and result["trip_destination"] is None:
+                result["trip_destination"] = where.to_dict()
+        place_facts, result["places"] = self._place_facts(question, where if where is not None else kiosk, kiosk, at,
+                                                          lang, debug)
+        facts += place_facts
+        # The kiosk's own station tips (Zürich HB) only confuse an answer about another town.
+        elsewhere = where is not None and where.id != kiosk.id and (debug.get("place_facts") or {}).get("count")
+        result = self._ai_answer(facts, question, kiosk, at, lang, screen_lang, history,
+                                 None if elsewhere else extra_facts, result)
+        # The list of places (with photos) is the answer: a short intro instead of the AI repeating the list, or
+        # of "please ask staff". Only an answer that also gives train times ("…and when does my train leave?") stays.
+        if result["places"] and not (result["answered"] and _times(result["answer"] or "")):
+            info = debug.get("place_facts") or {}
+            kind = "eat" if all(p["kind"] == "eat" for p in result["places"]) else "explore"
+            answer_lang = result.get("answer_lang") if result.get("answer_lang") in LANG_NAMES else lang
+            result["answer"] = PLACES_INTRO[kind][answer_lang].format(town=info.get("town") or kiosk.name)
+            result["answered"] = True
+            debug["places_intro"] = True
+        return result
+
+    def _place_named(self, question: str, kiosk: Station, debug: dict) -> Station | None:
+        """The town a question asks about ("What can I do in Basel?" -> Basel SBB), if any and unambiguous."""
+        if self.ai is None or not self.ai.enabled:
+            return None
+        try:
+            data = self.ai.chat_json(
+                "Which Swiss town or railway station does the traveller's question ask about? Give the official "
+                "Swiss station name (Basel SBB for Basel, Genève for Geneva, Luzern for Lucerne). Use null if the "
+                "question names no place.", question, PLACE_SCHEMA, name="place", max_tokens=60)
+        except AIError as exc:
+            debug["place_named_error"] = str(exc)
+            return None
+        said = data.get("place") if isinstance(data, dict) else None
+        if not isinstance(said, str) or not said.strip():
+            return None
+        hit = self.stations.match(said)
+        debug["place_named"] = {"said": said, "how": hit["how"], "station": hit["station"].name if hit["station"] else None}
+        return hit["station"] if hit["how"] in ("exact", "only", "busiest") else None
 
     def _place_facts(self, question: str, station: Station, kiosk: Station, at: int, lang: str,
-                     debug: dict) -> list[str]:
-        """Real places near a station from Google ("What can I do in Bern?"), when the question asks for them."""
+                     debug: dict) -> tuple[list[str], list[dict]]:
+        """Real places near a station from Google ("What can I do in Bern?"), when the question asks for them.
+
+        Returns the facts for the AI and the places themselves (shown as a list with photos in the chat)."""
         kinds = places_wanted(question)
         if not kinds or self.places is None or not self.places.enabled:
-            return []
+            return [], []
         out: list[str] = []
-        where = "near the kiosk" if station.id == kiosk.id else f"in {station.name}, near the station"
+        shown: list[dict] = []
+        town = station.municipality or station.name
+        where = "near the kiosk" if station.id == kiosk.id else f"in {town}, near the station"
         for kind in kinds:
             try:
                 found = self.places.nearby(station, at, kind, 120, lang, limit=MAX_PLACE_FACTS)["places"]
@@ -302,8 +374,21 @@ class Assistant:
                 kind_label = f" ({p['type_label']})" if p.get("type_label") else ""
                 out.append(f"{label} {where} (Google Maps): {p['name']}{kind_label}{rating}, about "
                            f"{p['walk_minutes']} min walk from {station.name} station.")
-        debug["place_facts"] = {"station": station.name, "kinds": kinds, "count": len(out)}
-        return out
+                if all(s["id"] != p["id"] for s in shown):
+                    shown.append({"id": p["id"], "name": p["name"], "kind": kind, "type_label": p.get("type_label"),
+                                  "rating": p.get("rating"), "rating_count": p.get("rating_count"),
+                                  "walk_minutes": p["walk_minutes"], "from_station": station.name,
+                                  "photo": p.get("photo"), "maps_uri": p.get("maps_uri")})
+        debug["place_facts"] = {"station": station.name, "town": town, "kinds": kinds, "count": len(out)}
+        if out:
+            out.insert(0, "The screen shows these places as a list with photos, ratings and walking times right "
+                          "under your answer. Introduce them in ONE short sentence; do not list or repeat them.")
+        if out and station.id != kiosk.id:
+            # Without this, a small model reads "the kiosk is at Zürich HB" as "cannot talk about Basel".
+            out.insert(0, f"The traveller asks what to do in {town}. The kiosk CAN answer this: recommend the real "
+                          f"places in {town} listed below (from Google Maps), with their walking time from "
+                          f"{station.name} station, and set answered to true.")
+        return out, shown
 
     def _ai_answer(self, facts: list[str], question: str, kiosk: Station, at: int, lang: str, screen_lang: str,
                    history: list[dict] | None, extra_facts: list[str] | None, result: dict) -> dict:

@@ -7,7 +7,7 @@ import { PhotoBox } from './PhotoBox';
 import styles from './PlaceCard.module.css';
 
 /** Swiss number format, the same on server and browser (Intl differs between Node and Chrome: ' vs ’). */
-function swissNumber(n: number, lang: Lang, decimals = 0): string {
+export function swissNumber(n: number, lang: Lang, decimals = 0): string {
   const [int, frac] = n.toFixed(decimals).split('.');
   const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, lang === 'en' ? ',' : '’');
   return frac ? `${grouped}.${frac}` : grouped;
@@ -17,7 +17,7 @@ function swissNumber(n: number, lang: Lang, decimals = 0): string {
  * Google's photo as a plain image: <sbb-image> adds image-CDN parameters to the URL and loads a blurred
  * preview first, which Google's photo links do not support.
  */
-function GooglePhoto({ url, alt, credit }: { url: string; alt: string; credit?: string }) {
+export function GooglePhoto({ url, alt, credit }: { url: string; alt: string; credit?: string }) {
   return (
     <figure className={styles.figure}>
       {/* eslint-disable-next-line @next/next/no-img-element -- remote Google photo, no Next image optimisation */}

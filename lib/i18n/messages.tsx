@@ -68,6 +68,7 @@ const en = {
     finding: 'Finding your best alternative',
     privacy: 'We only read your route. No images are stored.',
     demoContinue: 'Demo: continue',
+    waiting: 'Waiting for your ticket’s QR code…',
     cameraView: 'Camera view',
     travelClass: (c: 1 | 2): string => (c === 2 ? '2nd class' : '1st class'),
   },
@@ -117,6 +118,7 @@ const en = {
   places: {
     attribution: 'Places and photos: Google Maps',
     exploreIntro: 'Close to the station. The walk back is already counted.',
+    walkFrom: (min: number, station: string) => `${min} min walk from ${station}`,
     photoBy: (name: string) => `Photo: ${name}`,
     stay: (min: number) => `about ${min} min there`,
   },
@@ -240,6 +242,7 @@ const de: Messages = {
     finding: 'Wir suchen die beste Alternative',
     privacy: 'Wir lesen nur Ihre Strecke. Es werden keine Bilder gespeichert.',
     demoContinue: 'Demo: weiter',
+    waiting: 'Warte auf den QR-Code Ihres Billetts…',
     cameraView: 'Kamerabild',
     travelClass: (c) => `${c}. Klasse`,
   },
@@ -289,6 +292,7 @@ const de: Messages = {
   places: {
     attribution: 'Orte und Fotos: Google Maps',
     exploreIntro: 'Nahe beim Bahnhof. Der Rückweg ist schon eingerechnet.',
+    walkFrom: (min: number, station: string) => `${min} Min. zu Fuss ab ${station}`,
     photoBy: (name: string) => `Foto: ${name}`,
     stay: (min: number) => `etwa ${min} Min. vor Ort`,
   },
@@ -410,6 +414,7 @@ const fr: Messages = {
     finding: 'Nous cherchons la meilleure alternative',
     privacy: 'Nous lisons uniquement votre trajet. Aucune image n’est enregistrée.',
     demoContinue: `Démo${NB}: continuer`,
+    waiting: 'En attente du code QR de votre billet…',
     cameraView: 'Image de la caméra',
     travelClass: (c) => (c === 2 ? '2e classe' : '1re classe'),
   },
@@ -459,6 +464,7 @@ const fr: Messages = {
   places: {
     attribution: `Lieux et photos${NB}: Google Maps`,
     exploreIntro: 'Près de la gare. Le temps du retour est déjà compté.',
+    walkFrom: (min: number, station: string) => `${min}${NB}min à pied depuis ${station}`,
     photoBy: (name: string) => `Photo${NB}: ${name}`,
     stay: (min: number) => `environ ${min}${NB}min sur place`,
   },
@@ -580,6 +586,7 @@ const it: Messages = {
     finding: 'Cerchiamo la migliore alternativa',
     privacy: 'Leggiamo solo il suo percorso. Nessuna immagine viene salvata.',
     demoContinue: 'Demo: continua',
+    waiting: 'In attesa del codice QR del suo biglietto…',
     cameraView: 'Immagine della telecamera',
     travelClass: (c) => `${c}a classe`,
   },
@@ -629,6 +636,7 @@ const it: Messages = {
   places: {
     attribution: 'Luoghi e foto: Google Maps',
     exploreIntro: 'Vicino alla stazione. Il tempo per tornare è già calcolato.',
+    walkFrom: (min: number, station: string) => `${min} min a piedi da ${station}`,
     photoBy: (name: string) => `Foto: ${name}`,
     stay: (min: number) => `circa ${min} min sul posto`,
   },

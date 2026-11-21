@@ -889,4 +889,68 @@ def test_places_wanted_in_four_languages():
     assert places_wanted("Que faire à Lausanne ?") == ["explore"]
     assert places_wanted("Cosa posso vedere a Lugano?") == ["explore"]
     assert places_wanted("When does my train leave?") == []
+    assert places_wanted("When do I arrive in Chur?") == []  # "do" here is not "things to do"
+    assert places_wanted("How much is the fare?") == []
+    assert places_wanted("I am going to Basel, any tips?") == ["explore"]
+    assert places_wanted("Hast du Tipps für Basel?") == ["explore"]
+    assert places_wanted("Was kann man in Basel machen?") == ["explore"]
+
+
+def test_things_to_do_in_a_town_that_is_not_a_trip(settings, fake, google):
+    # "What can I do in Delta?": the trip extraction finds no trip, the place question still finds Delta.
+    fake.chat_answers = [{"origin": None, "destinations": [], "language": "en"},
+                         {"place": "Delta"},
+                         {"language": "en", "answer": "In Delta you can visit the Old Tower.", "answered": True}]
+    tower = _gplace("Old Tower", 0.001, ptype="tourist_attraction")
+    tower["location"]["longitude"] = 7.3
+    google.places = [tower]
+    app = create_app(replace(settings, together_api_key="test-key", google_maps_api_key="g-key"),
+                     ai_transport=httpx.MockTransport(fake), places_transport=httpx.MockTransport(google))
+    with TestClient(app) as c:
+        body = c.post("/api/v1/question", json={"question": "What can I do in Delta?", "station": str(A),
+                                                 "at": AT, "extra_facts": ["Cafés at Alpha"]}).json()
+    facts = body["debug"]["facts"]
+    assert any("Place to visit in Delta" in f for f in facts)
+    assert any("The kiosk CAN answer this" in f for f in facts)
+    assert not any(f.startswith("Station tip") for f in facts)  # the kiosk's own tips are left out
+    shown = body["places"]  # for the list with photos in the chat
+    assert [p["name"] for p in shown] == ["Old Tower"] and shown[0]["photo"]["url"].startswith("https://")
+    assert shown[0]["from_station"] == "Delta" and shown[0]["walk_minutes"] >= 1
+    assert body["trip_destination"]["name"] == "Delta"  # "Show my next train" to the town asked about
+
+
+def test_places_are_introduced_when_the_ai_gives_no_answer(settings, fake, google):
+    fake.chat_answers = [{"origin": None, "destinations": [], "language": "de"},
+                         {"place": "Delta"},
+                         {"language": "de", "answer": "Weiss ich nicht.", "answered": False}]
+    tower = _gplace("Old Tower", 0.001, ptype="tourist_attraction")
+    tower["location"]["longitude"] = 7.3
+    google.places = [tower]
+    app = create_app(replace(settings, together_api_key="test-key", google_maps_api_key="g-key"),
+                     ai_transport=httpx.MockTransport(fake), places_transport=httpx.MockTransport(google))
+    with TestClient(app) as c:
+        body = c.post("/api/v1/question", json={"question": "Was kann ich in Delta besichtigen?", "station": str(A),
+                                                 "at": AT, "lang": "de"}).json()
+    assert body["answered"] is True and body["places"]
+    assert body["answer"].startswith("Hier einige Empfehlungen in") and "Infoschalter" not in body["answer"]
+
+
+def test_places_answer_is_a_short_intro_but_train_times_are_kept(settings, fake, google):
+    tower = _gplace("Old Tower", 0.001, ptype="tourist_attraction")
+    tower["location"]["longitude"] = 7.3
+    google.places = [tower]
+    app = create_app(replace(settings, together_api_key="test-key", google_maps_api_key="g-key"),
+                     ai_transport=httpx.MockTransport(fake), places_transport=httpx.MockTransport(google))
+    with TestClient(app) as c:
+        fake.chat_answers = [{"origin": None, "destinations": ["Delta"], "language": "en"},
+                             {"language": "en", "answer": "You can visit the Old Tower, the Old Tower…", "answered": True}]
+        body = c.post("/api/v1/question", json={"question": "What can I see in Delta?", "station": str(A),
+                                                 "at": AT}).json()
+        assert body["answer"].startswith("Here are some recommendations in")
+        fake.chat_answers = [{"origin": None, "destinations": ["Delta"], "language": "en"},
+                             {"language": "en", "answer": "Your train leaves at 08:05. Visit the Old Tower.",
+                              "answered": True}]
+        body = c.post("/api/v1/question", json={"question": "When does my train to Delta leave, what can I see there?",
+                                                 "station": str(A), "at": AT}).json()
+        assert body["answer"].startswith("Your train leaves at 08:05")
 
