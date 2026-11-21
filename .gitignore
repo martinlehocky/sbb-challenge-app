@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Local configuration (may hold API keys)
+.env
+backend/.env
+
+# Built database and raw SBB data (large, and not for publication)
+backend/data/
+*.db
+*.building
+*.zip
+*.csv
+*.xlsx
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
