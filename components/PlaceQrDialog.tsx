@@ -4,7 +4,7 @@ import type { SbbDialogElement } from '@sbb-esta/lyne-elements/dialog.js';
 import QRCode from 'qrcode';
 import { useEffect, useRef, useState } from 'react';
 import type { Messages } from '@/lib/i18n/messages';
-import { SbbDialog, SbbDialogCloseButton, SbbDialogContent, SbbDialogTitle } from './sbb';
+import { SbbDialog, SbbDialogCloseButton, SbbDialogContent, SbbDialogTitle, SbbIcon } from './sbb';
 import styles from './PlaceQrDialog.module.css';
 
 /** What the QR window needs to know about a place from Google. */
@@ -38,7 +38,7 @@ export function PlaceQrDialog({ place, t, onClose }: { place: QrPlace | null; t:
   useEffect(() => {
     if (!url) return;
     let alive = true;
-    QRCode.toString(url, { type: 'svg', margin: 2, errorCorrectionLevel: 'M' })
+    QRCode.toString(url, { type: 'svg', margin: 0, errorCorrectionLevel: 'M' })
       .then((svg) => alive && setQr({ url, src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` }))
       .catch((err) => console.error('[places] QR code failed:', err));
     return () => {
@@ -55,18 +55,25 @@ export function PlaceQrDialog({ place, t, onClose }: { place: QrPlace | null; t:
 
   const current = shown;
   return (
-    <SbbDialog ref={dialog} backdropAction="close" onClose={onClose} className={styles.dialog}>
+    <SbbDialog ref={dialog} backdrop="translucent" backdropAction="close" onClose={onClose} className={styles.dialog}>
       <SbbDialogCloseButton />
-      <SbbDialogTitle>{current?.name}</SbbDialogTitle>
+      <SbbDialogTitle visualLevel="5">{current?.name}</SbbDialogTitle>
       <SbbDialogContent>
         <div className={styles.body}>
-          {current && qr && qr.url === mapsUrl(current) ? (
-            // eslint-disable-next-line @next/next/no-img-element -- generated SVG code, no image optimisation
-            <img src={qr.src} alt={t.places.qrAlt(current.name)} className={styles.qr} />
-          ) : (
-            <span className={styles.qr} aria-hidden="true" />
-          )}
-          <p className={styles.text}>{t.places.qrText}</p>
+          <div className={styles.frame}>
+            {current && qr && qr.url === mapsUrl(current) ? (
+              // eslint-disable-next-line @next/next/no-img-element -- generated SVG code, no image optimisation
+              <img src={qr.src} alt={t.places.qrAlt(current.name)} className={styles.qr} />
+            ) : (
+              <span className={styles.qr} aria-hidden="true" />
+            )}
+          </div>
+          <div className={styles.hint}>
+            <span className={styles.phone} aria-hidden="true">
+              <SbbIcon name="smartphone-medium" />
+            </span>
+            <p className={styles.text}>{t.places.qrText}</p>
+          </div>
         </div>
       </SbbDialogContent>
     </SbbDialog>

@@ -1,24 +1,52 @@
+/* A compact window: the page stays visible (dimmed) behind it. */
+.dialog {
+  /* The kiosk's 1rem is 32px: 20rem is about 60% of the screen width. */
+  --sbb-dialog-width: 20rem;
+  --sbb-dialog-max-width: calc(100% - 2 * var(--sbb-spacing-fixed-8x));
+}
+
+/* Code in the middle, short instruction under it. */
 .body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sbb-spacing-fixed-6x);
-  padding-block: var(--sbb-spacing-fixed-4x);
-  text-align: center;
+  gap: var(--sbb-spacing-fixed-5x);
+  padding-block: var(--sbb-spacing-fixed-2x) var(--sbb-spacing-fixed-1x);
 }
 
-/* Big enough to scan from arm's length; white quiet zone around the code. */
-.qr {
-  display: block;
-  width: 14rem;
-  height: 14rem;
+/* Light frame with its own quiet zone, so the code scans easily from arm's length. */
+.frame {
+  padding: var(--sbb-spacing-fixed-3x);
+  border: var(--sbb-border-width-1x) solid var(--sbb-color-cloud);
   border-radius: var(--sbb-border-radius-4x);
   background-color: var(--sbb-color-white);
 }
 
+.qr {
+  display: block;
+  width: 7.5rem;
+  height: 7.5rem;
+}
+
+.hint {
+  display: flex;
+  align-items: center;
+  gap: var(--sbb-spacing-fixed-3x);
+  width: 100%;
+  padding: var(--sbb-spacing-fixed-3x) var(--sbb-spacing-fixed-4x);
+  border-radius: var(--sbb-border-radius-4x);
+  background-color: var(--sbb-color-milk);
+}
+
+.phone {
+  display: inline-flex;
+  flex: none;
+  color: var(--sbb-color-red);
+}
+
 .text {
-  max-width: 24rem;
   margin: 0;
-  font-size: var(--sbb-text-font-size-m);
+  font-size: var(--sbb-text-font-size-s);
   line-height: var(--sbb-typo-line-height-heading);
+  color: var(--sbb-color-iron);
 }
