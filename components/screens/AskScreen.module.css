@@ -17,6 +17,11 @@
   list-style: none;
 }
 
+/* A new answer is scrolled to its first line: keep a little space above it. */
+.chat > li {
+  scroll-margin-top: var(--sbb-spacing-fixed-4x);
+}
+
 .mine,
 .theirs {
   display: flex;

@@ -159,6 +159,7 @@ export function AskScreen({
   const lastActivity = useRef(0);
   const restored = useRef(false);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const chatRef = useRef<HTMLOListElement | null>(null);
   const [level, setLevel] = useState({ now: 0, peak: 0 });
   const [lastDebug, setLastDebug] = useState<AskDebugState | null>(null);
 
@@ -198,10 +199,14 @@ export function AskScreen({
     return () => clearInterval(timer);
   }, [phase, messages.length, clearChat]);
 
-  // Show the newest message.
+  // Show the newest message. A new answer from the kiosk is shown from its first line (a long answer, or one with
+  // a list of places, is read from the top); the traveller's own message and "thinking…" are shown at the end.
+  const lastRole = messages.at(-1)?.role;
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
-  }, [messages.length, phase]);
+    const answer = phase === 'idle' && lastRole === 'kiosk' ? chatRef.current?.lastElementChild : null;
+    if (answer) answer.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    else endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
+  }, [messages.length, phase, lastRole]);
 
   useEffect(
     () => () => {
@@ -258,13 +263,18 @@ export function AskScreen({
 
   /**
    * The conversation so far, as sent to the AI (kiosk hints are left out). When the kiosk asked back, the
-   * stations it offered are added, so "the first one" or "Basel" can be understood.
+   * stations it offered are added, so "the first one" or "Basel" can be understood; places it showed are added
+   * with their walking time, so "How do I get there?" or "How do I get to the fountain?" can be answered.
    */
   const historyOf = (list: ChatMessage[]): ChatTurn[] =>
     list.flatMap((m): ChatTurn[] => {
       if (m.role === 'notice') return [];
       if (m.role === 'kiosk' && m.choices.length) {
         return [{ role: 'kiosk', text: `${m.text} (Options: ${m.choices.map((c) => c.name).join(', ')})` }];
+      }
+      if (m.role === 'kiosk' && m.places?.length) {
+        const shown = m.places.map((p) => `${p.name}, ${p.walkMinutes} min walk from ${p.fromStation}`).join('; ');
+        return [{ role: 'kiosk', text: `${m.text} (Places shown: ${shown})` }];
       }
       return [{ role: m.role, text: m.text }];
     });
@@ -439,7 +449,7 @@ export function AskScreen({
         )}
 
         {(messages.length > 0 || phase === 'thinking') && (
-          <ol className={styles.chat} aria-live="polite" aria-relevant="additions">
+          <ol ref={chatRef} className={styles.chat} aria-live="polite" aria-relevant="additions">
             {messages.map((m) => (
               <Message
                 key={m.id}

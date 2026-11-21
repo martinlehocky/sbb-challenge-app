@@ -919,6 +919,90 @@ def test_things_to_do_in_a_town_that_is_not_a_trip(settings, fake, google):
     assert body["trip_destination"]["name"] == "Delta"  # "Show my next train" to the town asked about
 
 
+def test_town_in_the_question_wins_over_the_ticket(settings, fake, google):
+    """Ticket to Delta, "Could you recommend places in Gamma?": places around Gamma, not Delta (real bug: Chur
+    places for a question about Basel). No town named ("while I wait") = around the kiosk, not the ticket's town."""
+    fountain = _gplace("Fountain", 0.001, ptype="tourist_attraction")
+    fountain["location"]["longitude"] = 7.2  # next to Gamma station
+    google.places = [fountain]
+    app = create_app(replace(settings, together_api_key="test-key", google_maps_api_key="g-key"),
+                     ai_transport=httpx.MockTransport(fake), places_transport=httpx.MockTransport(google))
+    with TestClient(app) as c:
+        fake.chat_answers = [{"origin": None, "destinations": [], "language": "en"},
+                             {"place": "Gamma"},
+                             {"language": "en", "answer": "Visit the Fountain.", "answered": True}]
+        body = c.post("/api/v1/question", json={"question": "Could you recommend places in Gamma?",
+                                                 "station": str(A), "at": AT, "destination": str(D)}).json()
+        assert body["debug"]["place_facts"]["town"] == "Gamma"
+        assert body["answer"].startswith("Here are some recommendations in Gamma")
+        assert body["trip_destination"]["name"] == "Gamma"  # "Show my next train" to Gamma
+        searches = [json.loads(q.content) for q in google.requests if q.url.path.endswith("searchNearby")]
+        center = searches[-1]["locationRestriction"]["circle"]["center"]
+        assert (center["latitude"], center["longitude"]) == (46.0, 7.2)
+
+        fake.chat_answers = [{"origin": None, "destinations": [], "language": "en"},
+                             {"place": None},
+                             {"language": "en", "answer": "Have a coffee.", "answered": True}]
+        body = c.post("/api/v1/question", json={"question": "What can I see while I wait?",
+                                                 "station": str(A), "at": AT, "destination": str(D)}).json()
+        assert body["debug"]["place_facts"]["town"] != "Delta"
+        assert body["trip_destination"] is None
+
+
+def _places_history(station, town="Gamma"):
+    return [{"role": "traveller", "text": f"Could you recommend places in {town}?"},
+            {"role": "kiosk", "text": f"Here are some recommendations in {town}: (Places shown: Old Tower, 12 min "
+                                      f"walk from {station}; Toy Worlds Museum, 9 min walk from {station})"}]
+
+
+def test_places_answer_about_a_town_becomes_the_conversation(settings, fake, google):
+    fountain = _gplace("Fountain", 0.001, ptype="tourist_attraction")
+    google.places = [fountain]
+    app = create_app(replace(settings, together_api_key="test-key", google_maps_api_key="g-key"),
+                     ai_transport=httpx.MockTransport(fake), places_transport=httpx.MockTransport(google))
+    with TestClient(app) as c:
+        fake.chat_answers = [NO_TRIP, {"place": "Gamma"}, {"language": "en", "answer": "x", "answered": True}]
+        body = c.post("/api/v1/question", json={"question": "Could you recommend places in Gamma?",
+                                                 "station": str(A), "at": AT}).json()
+    # The chat sends this back: "How do I get there?" / "When is the next train?" are then about Gamma.
+    assert body["context"]["destination"]["name"] == "Gamma"
+
+
+@pytest.mark.parametrize("question,place", [
+    ("How do I get to there?", None), ("Take me there", None), ("Wie komme ich dorthin?", None),
+    ("Comment je m’y rends ?", None), ("Come ci arrivo?", None), ("How do I get to the old tower?", "Old Tower")])
+def test_how_to_get_there_after_places_is_the_trip_to_their_station(client, fake, question, place):
+    """Real bug: after places in Basel, "How do I get to there?" said "cannot answer" (and with the ticket to Chur
+    it planned Chur). The places' station wins over the ticket, even when the AI finds no destination."""
+    fake.chat_answers = [NO_TRIP, {"language": "en", "answer": "Take the train to Gamma, then walk 12 minutes.",
+                                   "answered": True}]
+    body = _ask(client, question, destination=str(D), history=_places_history("Gamma"))
+    assert body["debug"]["places_follow_up"] == {"station": "Gamma", "place": place}
+    facts = body["debug"]["facts"]
+    assert any(f.startswith("Trip asked about: Alpha to Gamma") for f in facts)
+    if place is None:  # "there" = the town: only how to get to Gamma, no walk to one of the places
+        assert any("Answer only how to get to Gamma; do not mention the places" in f for f in facts)
+    else:
+        assert any("how to get to Old Tower" in f and "then the walking time to Old Tower" in f for f in facts)
+    assert body["trip_destination"]["name"] == "Gamma"  # "Show my next train" to Gamma, not the ticket's Delta
+
+
+@pytest.mark.parametrize("question", ["Is there a toilet?", "When does my train leave?", "Il y a un train ?"])
+def test_other_questions_after_places_keep_the_trip(client, fake, question):
+    fake.chat_answers = [NO_TRIP, {"language": "en", "answer": "Your train leaves soon.", "answered": True}]
+    body = _ask(client, question, destination=str(D), history=_places_history("Gamma"))
+    assert "places_follow_up" not in body["debug"]
+    assert not any(f.startswith("Trip asked about: Alpha to Gamma") for f in body["debug"]["facts"])
+
+
+def test_how_to_get_to_a_place_near_the_kiosk_is_a_walk(client, fake):
+    fake.chat_answers = [NO_TRIP, {"language": "en", "answer": "It is a 12 minute walk.", "answered": True}]
+    body = _ask(client, "How do I get there?", history=_places_history("Alpha", town="Alpha"))
+    facts = body["debug"]["facts"]
+    assert any("which is the station they are at now. No train is needed" in f for f in facts)
+    assert body["trip_destination"] is None
+
+
 def test_places_are_introduced_when_the_ai_gives_no_answer(settings, fake, google):
     fake.chat_answers = [{"origin": None, "destinations": [], "language": "de"},
                          {"place": "Delta"},
