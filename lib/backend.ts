@@ -10,7 +10,7 @@
  *   DEMO_AT          The simulated "now", Swiss local time with offset.
  *                    Default 2026-09-10T11:05:00+02:00 (the disruption data covers September 2026).
  *   KIOSK_STATION    Station number of the kiosk. Default 8503000 = Zürich HB.
- *   TRIP_DESTINATION Destination read from the (simulated) ticket. Default 8509000 = Chur.
+ *   TRIP_DESTINATION Destination read from the (simulated) ticket. Default 8509411 = Sargans.
  */
 import type {
   ClockTime,
@@ -54,7 +54,7 @@ export function backendConfig(): BackendConfig | null {
     url: url.replace(/\/+$/, ''),
     at,
     kioskStation,
-    destination: process.env.TRIP_DESTINATION?.trim() || '8509000',
+    destination: process.env.TRIP_DESTINATION?.trim() || '8509411',
   };
 }
 

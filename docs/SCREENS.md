@@ -2,7 +2,7 @@
 
 Source of truth for the UI: the design canvas "SBB Disruption Kiosk – Station Screen" (https://claude.ai/artifact/T1dcHvtB4VuKYNaJwrNJN8, version of 21 Nov 2026 14:30). This file copies its screens, wording and demo data so the app can be built without opening the canvas.
 
-All data is **mock data** for the demo scenario: **10 Sep 2026, Zürich HB, traveller going to Chur, IC 3 at 11:07 cancelled** because of overhead line damage between Wädenswil and Pfäffikon SZ.
+All data is **mock data** for the demo scenario: **10 Sep 2026, Zürich HB, traveller going to Sargans, IC 3 at 11:07 cancelled** because of overhead line damage between Wädenswil and Pfäffikon SZ.
 
 ## Global layout and style
 
@@ -24,15 +24,15 @@ All data is **mock data** for the demo scenario: **10 Sep 2026, Zürich HB, trav
 ## 2 · Scanning ticket (`/kiosk/scan`)
 - Header: "Cancel" (→ 1), centre "↑ Camera is above the screen", time 11:05.
 - Heading **"Hold your ticket up to the camera"** / "Paper ticket, SwissPass or the QR code in the SBB app".
-- Large dark camera viewfinder (~820 × 820) with white corner brackets, a red scan line, and a tilted ticket inside showing "Zürich HB → Chur, 2nd class · 10.09." + QR code.
-- Progress list: ✓ **"Ticket recognised: Zürich HB → Chur"** · ⟳ **"Checking your train against live disruptions…"** · ○ "Finding your best alternative". (Animate through the steps, then go to 3.)
+- Large dark camera viewfinder (~820 × 820) with white corner brackets, a red scan line, and a tilted ticket inside showing "Zürich HB → Sargans, 2nd class · 10.09." + QR code.
+- Progress list: ✓ **"Ticket recognised: Zürich HB → Sargans"** · ⟳ **"Checking your train against live disruptions…"** · ○ "Finding your best alternative". (Animate through the steps, then go to 3.)
 - Footer: lock icon "We only read your route. No images are stored." + small dark button "Demo: continue" → 3.
 
 ## 3 · Your next train (`/kiosk/result`)
-- Header: "Start over" (→ 1), centre "Zürich HB → Chur", time 11:05.
+- Header: "Start over" (→ 1), centre "Zürich HB → Sargans", time 11:05.
 - Cancellation box (red): badge **IC 3**, **"Your train at ~~11:07~~ is cancelled"**, "Overhead line damage between Wädenswil and Pfäffikon SZ. Repairs expected until early evening."
-- Label "YOUR BEST NEXT TRAIN". Big outlined card: badge **IR 35** "to Chur", **11:37** "departs", countdown ring **"32 min to go"**; three tiles: **Platform 9** · **Arrives Chur 12:52** · **vs. your plan +30 min** (red); ✓ "Direct, no changes. **Your ticket is valid** on this train."; people icon "Expected to be very busy. Board at the **front (sector A)**."
-- Label "OTHER OPTIONS": **11:14** "S5 via Rapperswil, change in Ziegelbrücke" / "Leaves sooner, arrives later: Chur 13:02 · 1 change" / "Pl. 4" · **12:37** "IR 35 direct" / "Less crowded: Chur 13:52 · no changes" / "Pl. 9".
+- Label "YOUR BEST NEXT TRAIN". Big outlined card: badge **IR 35** "to Chur", **11:37** "departs", countdown ring **"32 min to go"**; three tiles: **Platform 9** · **Arrives Sargans 12:29** · **vs. your plan +27 min** (red); ✓ "Direct, no changes. **Your ticket is valid** on this train."; people icon "Expected to be very busy. Board at the **front (sector A)**."
+- Label "OTHER OPTIONS": **11:14** "S5 via Rapperswil, change in Ziegelbrücke" / "Leaves sooner, arrives later: Sargans 12:42 · 1 change" / "Pl. 4" · **12:37** "IR 35 direct" / "Less crowded: Sargans 13:29 · no changes" / "Pl. 9".
 - Two buttons at the bottom: primary **"What can I do in 32 min?"** → 4, secondary (phone icon) **"Send to my phone"** → 6.
 
 ## 4 · What would you like to do? (`/kiosk/wait`)
@@ -77,9 +77,9 @@ All data is **mock data** for the demo scenario: **10 Sep 2026, Zürich HB, trav
 - Keep `[Hotel name]` / `[price]` as visible placeholders: we have no hotel data, never invent real hotel names, prices or availability.
 
 ## 6 · Live updates on phone (`/phone`)
-- Phone-width page (390 px). Header: "Your trip today" / **"Zürich HB → Chur"**, logo right.
+- Phone-width page (390 px). Header: "Your trip today" / **"Zürich HB → Sargans"**, logo right.
 - Update card (amber, bell icon): "NEW UPDATE · 11:21" / **"Your IR 35 now leaves at 11:42 (+5 min)"** / "Still platform 9. You can stay a bit longer: head back by **11:35**."
-- Train card: IR 35 to Chur, **11:42** with ~~11:37~~ struck through, "Platform 9 · arrives Chur 12:57", circle "21 min".
+- Train card: IR 35 to Chur, **11:42** with ~~11:37~~ struck through, "Platform 9 · arrives Sargans 12:34", circle "21 min".
 - "WHAT HAPPENED SO FAR" timeline (newest first): 11:21 (amber) "IR 35 delayed by 5 min. Your plan was updated." · 11:06 (green) "You picked the IR 35 at the kiosk in Zürich HB." · 11:05 (red) "Your IC 3 at 11:07 was cancelled (overhead line damage, Wädenswil – Pfäffikon SZ)."
 - Grey box "WE'RE WATCHING FOR YOU" / "If the line reopens earlier or your platform changes, you'll get a message straight away."
 - Buttons: red **"See things to do nearby"** (→ 4), outlined "Stop updates".

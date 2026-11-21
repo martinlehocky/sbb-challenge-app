@@ -33,7 +33,7 @@ export function DemoLanding() {
       <main className={styles.main}>
         <SbbTitle level="1">Disruption kiosk – demo</SbbTitle>
         <p className={styles.lead}>
-          Scenario: 10 Sep 2026, Zürich HB, traveller going to Chur, IC 3 at 11:07 cancelled
+          Scenario: 10 Sep 2026, Zürich HB, traveller going to Sargans, IC 3 at 11:07 cancelled
           (overhead line damage between Wädenswil and Pfäffikon SZ). All data is mock data.
         </p>
         <div className={styles.buttons}>

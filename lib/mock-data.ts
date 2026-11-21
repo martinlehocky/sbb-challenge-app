@@ -1,6 +1,6 @@
 /**
  * Demo data for the scenario in docs/SCREENS.md:
- * 10 Sep 2026, Zürich HB, traveller going to Chur, IC 3 at 11:07 cancelled
+ * 10 Sep 2026, Zürich HB, traveller going to Sargans, IC 3 at 11:07 cancelled
  * because of overhead line damage between Wädenswil and Pfäffikon SZ.
  *
  * Everything here is mock data. Texts are given in all kiosk languages with
@@ -30,7 +30,7 @@ import type {
 
 export const stations = {
   zurichHb: { id: '8503000', name: 'Zürich HB' },
-  chur: { id: '8509000', name: 'Chur' },
+  sargans: { id: '8509411', name: 'Sargans' },
   waedenswil: { id: '8503206', name: 'Wädenswil' },
   pfaeffikonSz: { id: '8503209', name: 'Pfäffikon SZ' },
 } satisfies Record<string, Station>;
@@ -84,7 +84,7 @@ export const trip: Trip = {
   id: 'demo-trip-1',
   ticket: {
     from: stations.zurichHb,
-    to: stations.chur,
+    to: stations.sargans,
     date: '2026-09-10',
     travelClass: 2,
     printedDate: '10.09.',
@@ -95,7 +95,7 @@ export const trip: Trip = {
     departure: '11:07',
     platform: '9',
   },
-  plannedArrival: '12:22',
+  plannedArrival: '12:02',
 };
 
 export const tripResult: Localizable<TripResult> = {
@@ -107,11 +107,11 @@ export const tripResult: Localizable<TripResult> = {
   best: {
     id: 'ir35-1137',
     train: { line: lines.ir35, direction: 'Chur', departure: '11:37', platform: '9' },
-    arrival: '12:52',
-    arrivalStation: stations.chur,
+    arrival: '12:29',
+    arrivalStation: stations.sargans,
     changes: 0,
     routeLabel: tx('IR 35 direct', 'IR 35 direkt', 'IR 35 direct', 'IR 35 diretto'),
-    delayVsPlanMinutes: 30,
+    delayVsPlanMinutes: 27,
     ticketValid: true,
     occupancy: { secondClass: 'high' },
     boardingHint: tx('front (sector A)', 'vorne (Sektor A)', 'à l’avant (secteur A)', 'in testa (settore A)'),
@@ -120,8 +120,8 @@ export const tripResult: Localizable<TripResult> = {
     {
       id: 's5-1114',
       train: { line: lines.s5, departure: '11:14', platform: '4' },
-      arrival: '13:02',
-      arrivalStation: stations.chur,
+      arrival: '12:42',
+      arrivalStation: stations.sargans,
       changes: 1,
       routeLabel: tx(
         'S5 via Rapperswil, change in Ziegelbrücke',
@@ -142,12 +142,12 @@ export const tripResult: Localizable<TripResult> = {
     {
       id: 'ir35-1237',
       train: { line: lines.ir35, direction: 'Chur', departure: '12:37', platform: '9' },
-      arrival: '13:52',
-      arrivalStation: stations.chur,
+      arrival: '13:29',
+      arrivalStation: stations.sargans,
       changes: 0,
       routeLabel: tx('IR 35 direct', 'IR 35 direkt', 'IR 35 direct', 'IR 35 diretto'),
       tradeOff: tx('Less crowded', 'Weniger voll', 'Moins chargé', 'Meno affollato'),
-      delayVsPlanMinutes: 90,
+      delayVsPlanMinutes: 87,
       ticketValid: true,
       occupancy: { secondClass: 'low' },
     },
@@ -632,7 +632,7 @@ export const restScenarios: Record<TimeOfDay, Localizable<RestScenario>> = {
 export const phoneTrip: Localizable<PhoneTrip> = {
   tripId: trip.id,
   from: stations.zurichHb,
-  to: stations.chur,
+  to: stations.sargans,
   latest: {
     time: '11:21',
     headline: tx(
@@ -650,8 +650,8 @@ export const phoneTrip: Localizable<PhoneTrip> = {
     departure: '11:42',
     plannedDeparture: '11:37',
     platform: '9',
-    arrival: '12:57',
-    arrivalStation: stations.chur,
+    arrival: '12:34',
+    arrivalStation: stations.sargans,
     minutesToDeparture: 21,
   },
   timeline: [
