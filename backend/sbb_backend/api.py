@@ -29,6 +29,13 @@ from .timeutil import parse_query_time, to_iso
 log = logging.getLogger("sbb_backend.api")
 Lang = Literal["en", "de", "fr", "it"]
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
+# Vocabulary hint for speech recognition, so short Swiss names ("Chur", "Thun") are not misheard.
+STT_PROMPT = (
+    "A traveller asks for a train trip in Switzerland. Stations: Zürich HB, Bern, Basel SBB, Genève, Lausanne, "
+    "Luzern, Chur, St. Gallen, Lugano, Bellinzona, Olten, Winterthur, Biel/Bienne, Fribourg, Neuchâtel, Sion, Brig, "
+    "Visp, Interlaken Ost, Thun, Spiez, Zug, Aarau, Baden, Schaffhausen, Rapperswil, Ziegelbrücke, Sargans, "
+    "Landquart, Wädenswil, Pfäffikon SZ, Morges, Nyon, Yverdon-les-Bains, Montreux, Vevey."
+)
 
 
 @dataclass
@@ -244,7 +251,8 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
     async def transcribe(file: UploadFile = File(...), lang: Lang | None = Form(None)) -> dict:
         audio = await read_audio(file)
         try:
-            text = await run_in_threadpool(svc().ai.transcribe, audio, file.filename or "audio", file.content_type, lang)
+            text = await run_in_threadpool(svc().ai.transcribe, audio, file.filename or "audio", file.content_type, lang,
+                                           STT_PROMPT)
         except AIError as exc:
             raise ai_http_error(exc) from exc
         return {"text": text}
@@ -265,7 +273,13 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
         audio = await read_audio(file)
         s = svc()
         try:
-            transcript = await run_in_threadpool(s.ai.transcribe, audio, file.filename or "audio", file.content_type, lang)
+            hint = STT_PROMPT
+            if station:
+                kiosk = s.stations.resolve(station)
+                if kiosk:
+                    hint += f" The traveller is at {kiosk.name}."
+            transcript = await run_in_threadpool(s.ai.transcribe, audio, file.filename or "audio", file.content_type,
+                                                 lang, hint)
         except AIError as exc:
             raise ai_http_error(exc) from exc
         return await run_in_threadpool(ask_from_text, transcript, station, at, lang, with_audio)

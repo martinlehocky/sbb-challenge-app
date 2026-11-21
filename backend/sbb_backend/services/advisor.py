@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from ..ai import AIError, TogetherClient
+from ..textutil import normalize
 from ..timeutil import ZURICH, to_iso
 from .disruptions import DisruptionState, DisruptionStore, pick
 from .planner import Connection, Journey, Leg, Planner
@@ -271,23 +272,45 @@ class Advisor:
         language = {"en": "English", "de": "German", "fr": "French", "it": "Italian"}[lang]
         system = (
             "You help railway travellers during a disruption, many of them elderly. Rewrite the advice in "
-            f"{language} in plain, calm words: at most 3 short sentences. Keep every time, train name, platform "
-            "and station exactly as given. Do not add any fact that is not in the advice."
+            f"{language} in plain, calm, short sentences. Keep ALL the information: every time, train name, "
+            "platform, every station where to change trains, and the delay. Copy times and names exactly. "
+            "Do not add any fact that is not in the advice."
         )
         user = f"Advice to rewrite:\n{message}"
         schema = {"type": "object", "properties": {"message": {"type": "string"}}, "required": ["message"]}
         try:
-            data = self.ai.chat_json(system, user, schema, name="advice", max_tokens=300)
+            data = self.ai.chat_json(system, user, schema, name="advice", max_tokens=400)
         except AIError as exc:
             return None, str(exc)
         text = data.get("message") if isinstance(data, dict) else None
         if not isinstance(text, str) or not text.strip():
             return None, "AI returned an empty message"
-        allowed = {f"{int(h):02d}:{m}" for h, m in _TIME.findall(message)}
-        used = {f"{int(h):02d}:{m}" for h, m in _TIME.findall(text)}
-        if not used <= allowed:
-            return None, f"AI message rejected: it contains times not in the facts ({sorted(used - allowed)})"
+        problem = check_rewrite(message, text, facts)
+        if problem:
+            return None, f"AI message rejected: {problem}"
         return text.strip(), None
+
+
+def _times(text: str) -> set[str]:
+    return {f"{int(h):02d}:{m}" for h, m in _TIME.findall(text)}
+
+
+def check_rewrite(original: str, rewritten: str, facts: dict) -> str | None:
+    """None if the rewrite keeps every time and station of the original and invents no time; else the reason."""
+    orig_times, new_times = _times(original), _times(rewritten)
+    if new_times - orig_times:
+        return f"it contains times not in the facts ({sorted(new_times - orig_times)})"
+    if orig_times - new_times:
+        return f"it leaves out times ({sorted(orig_times - new_times)})"
+    best = (facts.get("alternatives") or [None])[0]
+    if best:
+        names = {leg["from"]["name"] for leg in best["legs"]} | {best["legs"][-1]["to"]["name"]}
+        names |= {leg["direction"] for leg in best["legs"][:1] if leg.get("direction")}
+        hay = normalize(rewritten)
+        missing = sorted(n for n in names if n and normalize(n) in normalize(original) and normalize(n) not in hay)
+        if missing:
+            return f"it leaves out stations ({missing})"
+    return None
 
 
 def _close(a: Station, b: Station, radius_m: float) -> bool:

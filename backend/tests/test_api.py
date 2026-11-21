@@ -140,24 +140,35 @@ def test_voice_endpoints_need_ai(client_no_ai):
 def test_ai_rewrite_accepted_and_rejected(client, fake):
     payload = {"origin": "Alpha", "destination": "Delta", "at": AT, "depart_after": "2026-09-10T07:59",
                "ai_message": True}
-    fake.chat_answers = [{"message": "Your train is disrupted. Take the S2 at 08:05 on platform 7. Arrival 08:50."}]
+    good = ("Your train is disrupted until 10:00. Take the S2 at 08:05 on platform 7 towards Delta. "
+            "You reach Delta at 08:50, 20 minutes late.")
+    fake.chat_answers = [{"message": good}]
     body = client.post("/api/v1/advice", json=payload).json()
-    assert body["ai_message"].startswith("Your train is disrupted") and "ai_error" not in body
+    assert body["ai_message"] == good and "ai_error" not in body
     sent = json.loads(fake.requests[-1].content)
     assert sent["model"] == "Qwen/Qwen3.5-9B" and sent["reasoning"] == {"enabled": False}
     assert sent["response_format"]["type"] == "json_schema"
 
-    fake.chat_answers = [{"message": "Take the S2 at 08:15."}]  # 08:15 is invented
+    fake.chat_answers = [{"message": good.replace("08:05", "08:15")}]  # 08:15 is invented
     body = client.post("/api/v1/advice", json=payload).json()
     assert body["ai_message"] is None and "08:15" in body["ai_error"]
+
+    fake.chat_answers = [{"message": "Take the S2 at 08:05 towards Delta, arriving 08:50."}]  # drops 10:00
+    body = client.post("/api/v1/advice", json=payload).json()
+    assert body["ai_message"] is None and "leaves out times" in body["ai_error"]
+
+    fake.chat_answers = [{"message": "Disrupted until 10:00. Take the S2 at 08:05, you arrive at 08:50."}]  # no Delta
+    body = client.post("/api/v1/advice", json=payload).json()
+    assert body["ai_message"] is None and "leaves out stations" in body["ai_error"]
 
 
 def test_json_schema_fallback(client, fake):
     fake.reject_json_schema = True
-    fake.chat_answers = [{"message": "Take the S2 at 08:05."}]
+    msg = "Until 10:00: take the S2 at 08:05 to Delta, arriving at 08:50."
+    fake.chat_answers = [{"message": msg}]
     body = client.post("/api/v1/advice", json={"origin": "Alpha", "destination": "Delta", "at": AT,
                                                "depart_after": "2026-09-10T07:59", "ai_message": True}).json()
-    assert body["ai_message"] == "Take the S2 at 08:05."
+    assert body["ai_message"] == msg
     formats = [json.loads(r.content)["response_format"]["type"] for r in fake.requests]
     assert formats == ["json_schema", "json_object"]
 
@@ -169,6 +180,7 @@ def test_transcribe_and_speak(client, fake):
     body = fake.requests[-1].content
     assert b'name="model"' in body and b"openai/whisper-large-v3" in body
     assert b'name="language"' in body and b'name="file"; filename="q.mp3"' in body
+    assert b'name="prompt"' in body and "Chur".encode() in body
     assert body.index(b'name="model"') < body.index(b'name="file"')
 
     r = client.post("/api/v1/voice/speak", json={"text": "Gleis 7", "lang": "de"})

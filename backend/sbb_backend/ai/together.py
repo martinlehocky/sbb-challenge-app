@@ -152,11 +152,13 @@ class TogetherClient:
     # ------------------------------------------------------------------ audio
 
     def transcribe(self, audio: bytes, filename: str, content_type: str | None = None,
-                   language: str | None = None) -> str:
+                   language: str | None = None, prompt: str | None = None) -> str:
         # The docs ask for `model` before `file` in multipart uploads; httpx sends `data` fields first.
         data = {"model": self.settings.together_stt_model, "response_format": "json"}
         if language:
             data["language"] = language
+        if prompt:
+            data["prompt"] = prompt  # vocabulary hint (Whisper models use it, others ignore it)
         files = {"file": (filename or "audio.wav", audio, content_type or "application/octet-stream")}
         payload = self._post("/audio/transcriptions", data=data, files=files).json()
         text = payload.get("text") if isinstance(payload, dict) else None
