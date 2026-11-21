@@ -12,7 +12,7 @@ export function PhotoBox({ photo }: { photo: Photo }) {
   if (photo.src) {
     return (
       <figure className={`sbb-figure ${styles.figure}`}>
-        <SbbImage imageSrc={photo.src} alt={photo.label} className={styles.image} />
+        <SbbImage imageSrc={photo.src} alt={photo.label} skipLqip className={styles.image} />
         {photo.credit && <figcaption className={styles.credit}>{photo.credit}</figcaption>}
       </figure>
     );

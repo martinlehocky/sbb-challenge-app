@@ -60,6 +60,8 @@ export interface Disruption {
   cancelledLines: string[];
   /** Time of the last update of this disruption. */
   updatedAt: ClockTime;
+  /** Illustration matching the cause (never the actual incident); missing for sensitive causes. */
+  photo?: Photo;
 }
 
 /** What we read from the scanned ticket. */

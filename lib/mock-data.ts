@@ -163,12 +163,14 @@ export const places = {
     id: 'zurich-hb-hall',
     name: tx('The station hall', 'Die Bahnhofshalle', 'Le hall de la gare', 'L’atrio della stazione'),
     photo: {
+      src: '/photos/zurich-hb-platform-16.jpeg',
       label: tx(
-        'Photo: main hall of Zürich HB',
-        'Foto: Haupthalle des Zürich HB',
-        'Photo : hall principal de Zürich HB',
-        'Foto: atrio principale di Zürich HB',
+        'Photo: Zürich HB, platform 16',
+        'Foto: Zürich HB, Gleis 16',
+        'Photo : Zürich HB, voie 16',
+        'Foto: Zürich HB, binario 16',
       ),
+      credit: '© SBB CFF FFS',
     },
     history: tx(
       'The station opened in 1871. Its great hall is one of the largest in Switzerland.',

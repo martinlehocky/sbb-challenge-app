@@ -5,6 +5,17 @@
   --sbb-notification-content-padding-inline: var(--sbb-spacing-fixed-3x) var(--sbb-spacing-fixed-2x);
 }
 
+.cancelledRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sbb-spacing-fixed-4x);
+}
+
+.cancelledRow > p {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .cancelledTitle {
   margin-block-end: var(--sbb-spacing-fixed-1x);
   font-size: var(--sbb-heading-font-size-5);

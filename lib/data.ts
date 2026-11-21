@@ -21,6 +21,7 @@ import {
   tripResultFromAdvice,
   type BackendConfig,
 } from './backend';
+import { photoForReason } from './disruption-photos';
 import { localize } from './i18n/localize';
 import {
   phoneTrip,
@@ -30,6 +31,7 @@ import {
   welcome,
 } from './mock-data';
 import type {
+  Disruption,
   Lang,
   PhoneTrip,
   RestScenario,
@@ -83,8 +85,18 @@ function levelFor(minutes: number): WaitLevel {
   return 'long';
 }
 
+/** The mock disruption is overhead line damage (VIA reason EG_008); it gets the same illustration as live data would. */
+const MOCK_REASON = 'EG_008';
+
+function withMockPhoto(d: Disruption, lang: Lang): Disruption {
+  return { ...d, photo: photoForReason(MOCK_REASON, lang) };
+}
+
 export async function getWelcome(lang: Lang): Promise<WelcomeInfo> {
-  return fromBackend('welcome', (cfg) => liveWelcome(cfg, lang), () => localize<WelcomeInfo>(welcome, lang));
+  return fromBackend('welcome', (cfg) => liveWelcome(cfg, lang), () => {
+    const info = localize<WelcomeInfo>(welcome, lang);
+    return { ...info, disruptions: info.disruptions.map((d) => withMockPhoto(d, lang)) };
+  });
 }
 
 // Live versions: they throw on any backend problem, so that the calling page falls back as a whole.
@@ -120,7 +132,10 @@ async function liveWaitScenario(cfg: BackendConfig, lang: Lang): Promise<WaitSce
 
 /** Screen 3 (and the ticket shown on screen 2). */
 export async function getTripResult(lang: Lang): Promise<TripResult> {
-  return fromBackend('trip result', (cfg) => liveTripResult(cfg, lang), () => localize<TripResult>(tripResult, lang));
+  return fromBackend('trip result', (cfg) => liveTripResult(cfg, lang), () => {
+    const result = localize<TripResult>(tripResult, lang);
+    return { ...result, disruption: withMockPhoto(result.disruption, lang) };
+  });
 }
 
 /**

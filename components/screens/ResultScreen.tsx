@@ -4,6 +4,7 @@ import { getMessages, type Messages } from '@/lib/i18n/messages';
 import { withScenario } from '@/lib/scenario';
 import type { Connection, Scenario, TripResult } from '@/lib/types';
 import { CountdownRing } from '../CountdownRing';
+import { DisruptionPhoto } from '../DisruptionPhoto';
 import { KioskFooter, KioskFrame, KioskMain } from '../KioskFrame';
 import { KioskHeader } from '../KioskHeader';
 import { LineBadge } from '../LineBadge';
@@ -40,7 +41,10 @@ export function ResultScreen({ result, scenario }: { result: TripResult; scenari
             <SbbTitle level="1" visualLevel="4" className={styles.cancelledTitle}>
               <LineBadge line={planned.line} size="s" /> {t.result.cancelled(<s>{planned.departure}</s>)}
             </SbbTitle>
-            {result.disruption.reason}
+            <div className={styles.cancelledRow}>
+              <p>{result.disruption.reason}</p>
+              {result.disruption.photo && <DisruptionPhoto photo={result.disruption.photo} lang={scenario.lang} />}
+            </div>
           </SbbNotification>
         ) : (
           <SbbNotification type="success" readOnly animation="none" className={styles.cancelled}>

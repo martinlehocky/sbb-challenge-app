@@ -65,6 +65,8 @@ export function WelcomeScreen({ info, scenario }: { info: WelcomeInfo; scenario:
               <SbbTitle level="2">
                 {d.title}
               </SbbTitle>
+              {/* No photo here: next to the long official text it would push the scan instructions off screen.
+                  The illustration is shown on the result screen instead. */}
               {d.summary} <span className={styles.updated}>{t.welcome.updated(d.updatedAt)}</span>
             </SbbAlert>
           ))}

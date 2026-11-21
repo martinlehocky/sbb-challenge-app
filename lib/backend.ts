@@ -12,6 +12,7 @@
  *   KIOSK_STATION    Station number of the kiosk. Default 8503000 = Zürich HB.
  *   TRIP_DESTINATION Destination read from the (simulated) ticket. Default 8509000 = Chur.
  */
+import { photoForReason } from './disruption-photos';
 import type {
   ClockTime,
   Connection,
@@ -134,6 +135,7 @@ export interface ApiDisruption {
   expected_end: string | null;
   expected_end_kind: 'until' | 'approx' | 'at_least' | null;
   reason: string | null;
+  reason_id: string | null;
   title: string | null;
   description: string | null;
   lines: string[];
@@ -285,6 +287,7 @@ export function mapDisruption(d: ApiDisruption, lang: Lang, fallback: { from: St
     section: sec ? { from: station(sec.from), to: station(sec.to) } : fallback,
     cancelledLines: d.lines.map((l) => toLine(l, null).name),
     updatedAt: clock(d.last_update),
+    photo: photoForReason(d.reason_id, lang),
   };
 }
 
