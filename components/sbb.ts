@@ -17,7 +17,9 @@ export {
   SbbSecondaryButtonLink,
 } from '@sbb-esta/lyne-react/button.js';
 export { SbbCard, SbbCardLink } from '@sbb-esta/lyne-react/card.js';
+export { SbbChipLabel } from '@sbb-esta/lyne-react/chip-label.js';
 export { SbbClock } from '@sbb-esta/lyne-react/clock.js';
+export { SbbFormField } from '@sbb-esta/lyne-react/form-field.js';
 export { SbbIcon } from '@sbb-esta/lyne-react/icon.js';
 export { SbbImage } from '@sbb-esta/lyne-react/image.js';
 export { SbbLink } from '@sbb-esta/lyne-react/link.js';

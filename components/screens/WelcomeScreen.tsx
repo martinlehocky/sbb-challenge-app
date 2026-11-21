@@ -13,7 +13,6 @@ import {
   SbbAlertGroup,
   SbbIcon,
   SbbLogo,
-  SbbSecondaryButton,
   SbbTag,
   SbbTagGroup,
   SbbTitle,
@@ -92,12 +91,21 @@ export function WelcomeScreen({ info, scenario }: { info: WelcomeInfo; scenario:
         </div>
       </KioskMain>
       <KioskFooter>
-        <NavButton href={withScenario('/kiosk/scan', scenario)} iconName="qrcode-small" className={styles.fullWidth}>
+        <NavButton
+          href={withScenario('/kiosk/scan', { ...scenario, to: undefined })}
+          iconName="qrcode-small"
+          className={styles.fullWidth}
+        >
           {t.welcome.scan}
         </NavButton>
-        <SbbSecondaryButton size="l" className={styles.fullWidth}>
+        <NavButton
+          href={withScenario('/kiosk/ask', { ...scenario, to: undefined })}
+          variant="secondary"
+          iconName="microphone-small"
+          className={styles.fullWidth}
+        >
           {t.welcome.noTicket}
-        </SbbSecondaryButton>
+        </NavButton>
         <p className={styles.staff}>
           <SbbIcon name="circle-information-small" />
           {t.welcome.staff}

@@ -30,3 +30,12 @@ export function returnPlanLines(
     backBy: t.common.pleaseBackBy(plan.backBy),
   };
 }
+
+/** Minutes from `from` to `to` ("HH:MM", same day; 0 if `to` is earlier). */
+export function minutesBetween(from: string, to: string): number {
+  const m = (t: string) => {
+    const [h, min] = t.split(':').map(Number);
+    return h * 60 + min;
+  };
+  return Math.max(0, m(to) - m(from));
+}

@@ -3,6 +3,7 @@
 import { getMessages, type Messages } from '@/lib/i18n/messages';
 import { withScenario } from '@/lib/scenario';
 import type { Connection, Scenario, TripResult } from '@/lib/types';
+import { AiSummary } from '../ai/AiSummary';
 import { CountdownRing } from '../CountdownRing';
 import { KioskFooter, KioskFrame, KioskMain } from '../KioskFrame';
 import { KioskHeader } from '../KioskHeader';
@@ -18,7 +19,16 @@ import {
 import styles from './ResultScreen.module.css';
 
 /** Screen 3 · Your next train. */
-export function ResultScreen({ result, scenario }: { result: TripResult; scenario: Scenario }) {
+export function ResultScreen({
+  result,
+  scenario,
+  aiEnabled = false,
+}: {
+  result: TripResult;
+  scenario: Scenario;
+  /** AI summary shown: then only one other option is listed, so the screen still fits. */
+  aiEnabled?: boolean;
+}) {
   const { trip, best } = result;
   const planned = trip.plannedTrain;
   const t = getMessages(scenario.lang);
@@ -28,13 +38,17 @@ export function ResultScreen({ result, scenario }: { result: TripResult; scenari
       <KioskHeader
         time={result.now}
         start={
-          <NavButton href={withScenario('/kiosk', scenario)} variant="secondary" iconName="arrows-circle-small">
+          <NavButton
+            href={withScenario('/kiosk', { ...scenario, to: undefined })}
+            variant="secondary"
+            iconName="arrows-circle-small"
+          >
             {t.common.startOver}
           </NavButton>
         }
         center={`${trip.ticket.from.name} → ${trip.ticket.to.name}`}
       />
-      <KioskMain>
+      <KioskMain className={aiEnabled ? styles.mainWithAi : undefined}>
         {result.affected ? (
           <SbbNotification type="error" readOnly animation="none" className={styles.cancelled}>
             <SbbTitle level="1" visualLevel="4" className={styles.cancelledTitle}>
@@ -49,6 +63,8 @@ export function ResultScreen({ result, scenario }: { result: TripResult; scenari
             </SbbTitle>
           </SbbNotification>
         )}
+
+        {aiEnabled && <AiSummary lang={scenario.lang} to={scenario.to} />}
 
         <section className={styles.section} aria-labelledby="best-train">
           <h2 id="best-train" className={styles.label}>
@@ -81,7 +97,9 @@ export function ResultScreen({ result, scenario }: { result: TripResult; scenari
               </div>
               <div className={styles.tile}>
                 <dt>{t.result.vsPlan}</dt>
-                <dd className={styles.late}>{t.result.plusMin(best.delayVsPlanMinutes)}</dd>
+                <dd className={best.delayVsPlanMinutes > 0 ? styles.late : undefined}>
+                  {t.result.plusMin(best.delayVsPlanMinutes)}
+                </dd>
               </div>
             </dl>
 
@@ -104,16 +122,18 @@ export function ResultScreen({ result, scenario }: { result: TripResult; scenari
           </SbbCard>
         </section>
 
-        <section className={styles.section} aria-labelledby="other-options">
-          <h2 id="other-options" className={styles.label}>
-            {t.result.otherOptions}
-          </h2>
-          <ul className={styles.options}>
-            {result.alternatives.map((c) => (
-              <OptionRow key={c.id} connection={c} t={t} />
-            ))}
-          </ul>
-        </section>
+        {result.alternatives.length > 0 && (
+          <section className={styles.section} aria-labelledby="other-options">
+            <h2 id="other-options" className={styles.label}>
+              {t.result.otherOptions}
+            </h2>
+            <ul className={styles.options}>
+              {result.alternatives.slice(0, aiEnabled ? 1 : undefined).map((c) => (
+                <OptionRow key={c.id} connection={c} t={t} />
+              ))}
+            </ul>
+          </section>
+        )}
       </KioskMain>
       <KioskFooter>
         <div className={styles.actions}>

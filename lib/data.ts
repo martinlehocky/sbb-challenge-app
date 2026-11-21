@@ -41,10 +41,19 @@ import type {
   WelcomeInfo,
 } from './types';
 
-/** Runs `live` with the backend when configured; otherwise (or on failure, unless strict) returns `mock()`. */
-async function fromBackend<T>(what: string, live: (cfg: BackendConfig) => Promise<T>, mock: () => T): Promise<T> {
-  const cfg = backendConfig();
-  if (!cfg) return mock();
+/**
+ * Runs `live` with the backend when configured; otherwise (or on failure, unless strict) returns `mock()`.
+ * `to` replaces the ticket's destination (a station chosen by voice or text on the kiosk).
+ */
+async function fromBackend<T>(
+  what: string,
+  live: (cfg: BackendConfig) => Promise<T>,
+  mock: () => T,
+  to?: string,
+): Promise<T> {
+  const base = backendConfig();
+  if (!base) return mock();
+  const cfg = to ? { ...base, destination: to } : base;
   try {
     return await live(cfg);
   } catch (err) {
@@ -119,8 +128,13 @@ async function liveWaitScenario(cfg: BackendConfig, lang: Lang): Promise<WaitSce
 }
 
 /** Screen 3 (and the ticket shown on screen 2). */
-export async function getTripResult(lang: Lang): Promise<TripResult> {
-  return fromBackend('trip result', (cfg) => liveTripResult(cfg, lang), () => localize<TripResult>(tripResult, lang));
+export async function getTripResult(lang: Lang, to?: string): Promise<TripResult> {
+  return fromBackend(
+    'trip result',
+    (cfg) => liveTripResult(cfg, lang),
+    () => localize<TripResult>(tripResult, lang),
+    to,
+  );
 }
 
 /**
@@ -129,7 +143,7 @@ export async function getTripResult(lang: Lang): Promise<TripResult> {
  * (the `wait` URL switch then has no effect): the ideas of that level are kept, their times are moved
  * by the difference between the real departure and the demo departure, and ideas that no longer fit are dropped.
  */
-export async function getWaitScenario(level: WaitLevel, lang: Lang): Promise<WaitScenario> {
+export async function getWaitScenario(level: WaitLevel, lang: Lang, to?: string): Promise<WaitScenario> {
   return fromBackend(
     'wait scenario',
     (cfg) => liveWaitScenario(cfg, lang),
@@ -137,6 +151,7 @@ export async function getWaitScenario(level: WaitLevel, lang: Lang): Promise<Wai
       const scenario = localize<WaitScenario>(waitScenarios[level], lang);
       return fillPlatform(scenario, scenario.returnPlan.train.platform);
     },
+    to,
   );
 }
 
@@ -144,7 +159,7 @@ export async function getWaitScenario(level: WaitLevel, lang: Lang): Promise<Wai
  * Screen 5c. "day" uses the real best next train (times moved like on the wait screens).
  * "evening" and "night" are imagined later moments of the day and stay demo data in both modes.
  */
-export async function getRestScenario(time: TimeOfDay, lang: Lang): Promise<RestScenario> {
+export async function getRestScenario(time: TimeOfDay, lang: Lang, to?: string): Promise<RestScenario> {
   const mock = () => {
     const scenario = localize<RestScenario>(restScenarios[time], lang);
     return fillPlatform(scenario, scenario.returnPlan.train.platform);
@@ -174,14 +189,22 @@ export async function getRestScenario(time: TimeOfDay, lang: Lang): Promise<Rest
       return fillPlatform(scenario, train.platform);
     },
     mock,
+    to,
   );
 }
 
 /** Screen 6. */
-export async function getPhoneTrip(lang: Lang): Promise<PhoneTrip> {
+export async function getPhoneTrip(lang: Lang, to?: string): Promise<PhoneTrip> {
   return fromBackend(
     'phone trip',
     async (cfg) => phoneTripFromAdvice(await fetchAdvice(cfg, lang), cfg, lang),
     () => localize<PhoneTrip>(phoneTrip, lang),
+    to,
   );
+}
+
+/** Simulated "now" of the kiosk ("HH:MM"): DEMO_AT with the backend, the demo time otherwise. */
+export function getNow(): string {
+  const cfg = backendConfig();
+  return cfg ? clock(cfg.at) : localize<WelcomeInfo>(welcome, 'en').now;
 }

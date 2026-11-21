@@ -1,0 +1,50 @@
+.chip {
+  flex: none;
+}
+
+.working {
+  display: flex;
+  align-items: center;
+  gap: var(--sbb-spacing-fixed-3x);
+  margin: 0;
+  color: var(--sbb-color-3);
+  font-size: var(--sbb-text-font-size-xs);
+}
+
+.summary {
+  --sbb-card-border-radius: var(--sbb-border-radius-8x);
+  --sbb-card-padding-block-default: var(--sbb-spacing-fixed-2x);
+  --sbb-card-padding-inline-default: var(--sbb-spacing-fixed-5x);
+}
+
+.summaryHead {
+  display: flex;
+  align-items: center;
+  gap: var(--sbb-spacing-fixed-4x);
+  margin-block-end: var(--sbb-spacing-fixed-1x);
+}
+
+.summaryTitle {
+  white-space: nowrap;
+  color: var(--sbb-color-4);
+  font-size: var(--sbb-text-font-size-xs);
+  font-weight: bold;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.summaryText {
+  margin: 0;
+  font-size: var(--sbb-text-font-size-xs);
+  line-height: var(--sbb-typo-line-height-heading);
+}
+
+.ideasWorking {
+  padding: var(--sbb-spacing-fixed-3x) var(--sbb-spacing-fixed-5x);
+}
+
+.ideasNote {
+  color: var(--sbb-color-4);
+  font-size: var(--sbb-text-font-size-xs);
+  text-align: end;
+}

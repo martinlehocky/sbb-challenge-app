@@ -27,6 +27,8 @@ export interface Scenario {
   wait: WaitLevel;
   time: TimeOfDay;
   lang: Lang;
+  /** Destination station number chosen by voice or text (instead of the scanned ticket). */
+  to?: string;
 }
 
 export interface Station {

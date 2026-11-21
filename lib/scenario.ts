@@ -23,6 +23,7 @@ export function parseScenario(params: SearchParams): Scenario {
     wait: pick(first(params.wait), WAIT_LEVELS, DEFAULT_SCENARIO.wait),
     time: pick(first(params.time), TIMES_OF_DAY, DEFAULT_SCENARIO.time),
     lang: pick(first(params.lang), LANGS, DEFAULT_SCENARIO.lang),
+    to: /^\d{7}$/.test(first(params.to) ?? '') ? first(params.to) : undefined,
   };
 }
 
@@ -32,6 +33,7 @@ export function withScenario(path: string, scenario: Scenario): string {
   if (scenario.wait !== DEFAULT_SCENARIO.wait) query.set('wait', scenario.wait);
   if (scenario.time !== DEFAULT_SCENARIO.time) query.set('time', scenario.time);
   if (scenario.lang !== DEFAULT_SCENARIO.lang) query.set('lang', scenario.lang);
+  if (scenario.to) query.set('to', scenario.to);
   const qs = query.toString();
   return qs ? `${path}?${qs}` : path;
 }

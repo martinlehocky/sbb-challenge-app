@@ -16,7 +16,14 @@
   gap: var(--sbb-spacing-fixed-5x);
 }
 
-.withMedia .meta {
+.withMedia .clamp {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.meta {
   column-gap: var(--sbb-spacing-fixed-3x);
 }
 
@@ -55,6 +62,10 @@
   justify-content: space-between;
   gap: var(--sbb-spacing-fixed-1x) var(--sbb-spacing-fixed-4x);
   margin-block-start: var(--sbb-spacing-fixed-1x);
+}
+
+.meta .walk {
+  margin-inline-end: auto;
 }
 
 .walk {

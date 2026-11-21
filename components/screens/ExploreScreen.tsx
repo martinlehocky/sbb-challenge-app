@@ -1,15 +1,42 @@
 'use client';
 
-import { formatWalk } from '@/lib/format';
+import { formatWalk, minutesBetween } from '@/lib/format';
 import { getMessages } from '@/lib/i18n/messages';
-import type { Scenario, WaitScenario } from '@/lib/types';
+import type { PlaceSuggestion, Scenario, WaitScenario } from '@/lib/types';
+import { AiIdeas } from '../ai/AiIdeas';
 import { IdeaCard } from '../IdeaCard';
+import { LittleTimeNotice } from '../LittleTimeNotice';
 import { PhotoBox } from '../PhotoBox';
 import { WaitIdeasLayout } from '../WaitIdeasLayout';
 
 /** Screen 5b · Have a look around. */
-export function ExploreScreen({ wait, scenario }: { wait: WaitScenario; scenario: Scenario }) {
+/**
+ * With AI on, the screen shows 2 hand-written ideas plus 1 AI idea; the 3rd hand-written idea
+ * comes back if the AI has nothing that fits.
+ */
+export function ExploreScreen({
+  wait,
+  scenario,
+  aiEnabled = false,
+}: {
+  wait: WaitScenario;
+  scenario: Scenario;
+  aiEnabled?: boolean;
+}) {
   const t = getMessages(scenario.lang);
+  const card = ({ place, backBy }: PlaceSuggestion) => (
+    <IdeaCard
+      key={place.id}
+      media={<PhotoBox photo={place.photo} />}
+      title={place.name}
+      lines={[place.history]}
+      walk={formatWalk(place.walk, t)}
+      note={t.common.backBy(backBy)}
+      notePlacement="below"
+    />
+  );
+  const places = wait.explore.places;
+  const shown = aiEnabled ? places.slice(0, 2) : places;
   return (
     <WaitIdeasLayout
       scenario={scenario}
@@ -18,17 +45,20 @@ export function ExploreScreen({ wait, scenario }: { wait: WaitScenario; scenario
       intro={wait.explore.intro}
       returnPlan={wait.returnPlan}
     >
-      {wait.explore.places.map(({ place, backBy }) => (
-        <IdeaCard
-          key={place.id}
-          media={<PhotoBox photo={place.photo} />}
-          title={place.name}
-          lines={[place.history]}
-          walk={formatWalk(place.walk, t)}
-          note={t.common.backBy(backBy)}
-          notePlacement="below"
+      {shown.map(card)}
+      {places.length === 0 && (
+        <LittleTimeNotice text={t.wait.littleTime(wait.returnPlan.train.platform)} />
+      )}
+      {aiEnabled && (
+        <AiIdeas
+          interest="explore"
+          lang={scenario.lang}
+          minutes={wait.now ? minutesBetween(wait.now, wait.returnPlan.backBy) : wait.waitMinutes}
+          backBy={wait.returnPlan.backBy}
+          slots={3 - shown.length}
+          fallback={places.slice(shown.length).map(card)}
         />
-      ))}
+      )}
     </WaitIdeasLayout>
   );
 }

@@ -55,6 +55,7 @@ Deliberately not shown with live data, because the data cannot back it up: "Your
 | `/kiosk/wait/eat` | 5 · Eat or drink something |
 | `/kiosk/wait/explore` | 5b · Have a look around |
 | `/kiosk/wait/rest` | 5c · Sit down and rest |
+| `/kiosk/ask` | “No ticket?”: say or type the destination (AI) |
 | `/phone` | 6 · Live updates on phone |
 
 Kiosk pages are drawn on a fixed **1080 × 1920** portrait canvas that is scaled down to fit the browser window (full size on a real portrait screen). The phone page is 390 px wide, shown in a phone frame on desktop.
@@ -67,6 +68,7 @@ Kiosk pages are drawn on a fixed **1080 × 1920** portrait canvas that is scaled
 | `time` | `day` (11:05) · `evening` (19:40) · `night` (23:40, "No more trains tonight") | `day` | screen 5c |
 
 | `lang` | `en` · `fr` · `de` · `it` | `en` | all kiosk screens and the phone |
+| `to` | station number, e.g. `8507000` (Bern) | ticket destination | trip chosen on `/kiosk/ask` (screens 3–6, backend only) |
 
 Example: `/kiosk/wait/rest?time=night`, `/kiosk/wait/explore?wait=long&lang=de`. The parameters are kept while you click through the kiosk. The language can also be switched with the EN · FR · DE · IT buttons on the welcome screen.
 
@@ -85,9 +87,23 @@ Example: `/kiosk/wait/rest?time=night`, `/kiosk/wait/explore?wait=long&lang=de`.
 - `public/sbb-icons/`: only the SBB icons we use (copied from the SBB icon set). Add a new icon by copying its SVG from the SBB icons folder; check the exact name first.
 - `public/photos/`: real photos for screen 5b go here (see the README in that folder).
 
+## AI features (Together AI, through the backend)
+
+| Where | What the AI does | Without AI |
+|---|---|---|
+| `/kiosk/ask` | Speech to text (Whisper), then understands the trip (“Ich muss nach Genf” → Genève) and continues with the real next train | Typed search still works (station-name matching); the microphone is hidden |
+| Screen 3 | “In plain words”: the advice rewritten for stressed or older travellers, shown as text | Box hidden |
+| Screens 5–5c | One AI idea next to two hand-written ones, when it fits the time left; otherwise the third hand-written idea | Three hand-written ideas |
+
+- All AI output is marked “AI-generated” (SBB AI pattern “author”) and shows a working indicator while it loads; AI ideas add “Please check on site”.
+- Safeguards: the backend rejects a rewrite that changes or leaves out a time or station; ideas must fit the walk there and back; place names are limited to kinds of places plus landmarks the model is sure about; a silent recording is never sent (the browser measures the level).
+- Debug panel on `/kiosk/ask` (on by default, hide with `?debug=0` for the pitch): live microphone level, recording size and loudness, what Whisper heard and which language it detected (and whether it re-transcribed), what the AI extracted, which stations it matched, and the timings.
+- Code: `lib/ai.ts` (server-side calls), `app/api/ai/*` (routes the browser calls), `components/ai/*`, `components/screens/AskScreen.tsx`. The browser never sees the backend URL or the key.
+- Setup: `TOGETHER_API_KEY` in `backend/.env`. The kiosk does not speak (no text to speech); the backend's `/voice/speak` is still there for other clients.
+
 ## Not wired yet
 
-- "No ticket? Type your destination" and "Stop updates" are visual only.
+- "Stop updates" is visual only.
 - No QR decoding: the scan screen only shows the webcam and animates.
 
 ## Backend

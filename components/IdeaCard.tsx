@@ -11,9 +11,15 @@ export function IdeaCard({
   walk,
   note,
   media,
+  badge,
+  clampLines = false,
   notePlacement = 'end',
 }: {
   title: string;
+  /** Shown at the start of the walking-time row, e.g. the "AI-generated" chip. */
+  badge?: ReactNode;
+  /** Cut the text lines after two lines (for AI text, whose length we do not control). */
+  clampLines?: boolean;
   lines: ReactNode[];
   walk: string;
   /** Green note, e.g. "Back by 11:30". */
@@ -32,11 +38,12 @@ export function IdeaCard({
               {title}
             </SbbTitle>
             {lines.map((line, i) => (
-              <p key={i} className={styles.line}>
+              <p key={i} className={`${styles.line} ${clampLines ? styles.clamp : ''}`}>
                 {line}
               </p>
             ))}
             <div className={styles.meta}>
+              {badge}
               <p className={styles.walk}>
                 <SbbIcon name="walk-small" />
                 {walk}

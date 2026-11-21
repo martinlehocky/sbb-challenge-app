@@ -187,3 +187,8 @@
 .actions > * {
   width: 100%;
 }
+
+/* With the AI summary box the screen has one block more: a little less space between blocks. */
+.mainWithAi {
+  gap: var(--sbb-spacing-fixed-3x);
+}
