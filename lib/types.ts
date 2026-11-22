@@ -29,6 +29,8 @@ export interface Scenario {
   lang: Lang;
   /** Destination station number chosen by voice or text (instead of the scanned ticket). */
   to?: string;
+  /** Departure ("HH:MM") of the train the traveller picked under "Other options"; it becomes their train. */
+  dep?: string;
 }
 
 export interface Station {

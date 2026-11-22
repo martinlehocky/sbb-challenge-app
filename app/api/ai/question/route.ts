@@ -67,8 +67,11 @@ export async function POST(request: Request) {
   const lang = langOf(form.get('lang'));
   const to = form.get('to');
   const destination = typeof to === 'string' && /^\d{7}$/.test(to) ? to : undefined;
-  // about=trip: the question is about the traveller's journey (ticket destination if no `to`).
-  const trip = form.get('about') === 'trip' ? { destination } : undefined;
+  const depValue = form.get('dep');
+  const dep = typeof depValue === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(depValue) ? depValue : undefined;
+  // about=trip: the question is about the traveller's journey (ticket destination if no `to`), and `dep` is the
+  // train they picked on the result screen.
+  const trip = form.get('about') === 'trip' ? { destination, departure: dep } : undefined;
   // Chat: earlier turns (JSON) and the trip already discussed, so follow-ups are understood.
   const chat = {
     history: parseHistory(form.get('history')),

@@ -24,30 +24,6 @@
   transform: scaleX(-1);
 }
 
-.ticket {
-  display: flex;
-  align-items: center;
-  gap: var(--sbb-spacing-fixed-6x);
-  padding: var(--sbb-spacing-fixed-6x);
-  border-radius: var(--sbb-border-radius-4x);
-  background-color: var(--sbb-background-color-1);
-  color: var(--sbb-color-1);
-  transform: rotate(-8deg);
-}
-
-.ticketText {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sbb-spacing-fixed-1x);
-  font-size: var(--sbb-text-font-size-s);
-  line-height: var(--sbb-typo-line-height-heading);
-}
-
-.qr {
-  --sbb-icon-svg-width: 4rem;
-  --sbb-icon-svg-height: 4rem;
-}
-
 .corner {
   position: absolute;
   width: 3rem;

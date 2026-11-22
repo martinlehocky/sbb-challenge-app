@@ -83,15 +83,23 @@ export async function aiStatus(): Promise<AiStatus> {
 // ---------------------------------------------------------------- plain-language advice
 
 /** AI rewrite of the advice for the kiosk's trip (the backend rejects rewrites that change times or stations). */
-export async function aiSummary(lang: Lang, destination?: string): Promise<string> {
+export async function aiSummary(lang: Lang, destination?: string, dep?: string): Promise<string> {
   const cfg = config();
   const dest = destination ?? cfg.destination;
   // Throwing inside the cached loader keeps failures out of the cache (a network blip must not stick for 10 min).
-  const message = await cached(`summary ${lang} ${dest} ${cfg.at}`, async () => {
+  const message = await cached(`summary ${lang} ${dest} ${dep ?? ''} ${cfg.at}`, async () => {
     const advice = await request<{ ai_message?: string | null; ai_error?: string; message: string }>(
       cfg,
       '/advice',
-      json({ origin: cfg.kioskStation, destination: dest, at: cfg.at, lang, alternatives: 3, ai_message: true }),
+      json({
+        origin: cfg.kioskStation,
+        destination: dest,
+        at: cfg.at,
+        lang,
+        alternatives: 3,
+        ai_message: true,
+        ...(dep ? { prefer_departure: dep } : {}),
+      }),
     );
     if (!advice.ai_message) throw new Error(advice.ai_error || 'The AI gave no summary');
     return advice.ai_message;
@@ -226,7 +234,7 @@ export interface QuestionResult {
 export interface ChatPlace {
   id: string;
   name: string;
-  kind: 'eat' | 'explore';
+  kind: 'eat' | 'coffee' | 'explore';
   typeLabel: string | null;
   rating: number | null;
   ratingCount: number | null;
@@ -293,7 +301,7 @@ interface ApiQuestion {
   places?: {
     id: string;
     name: string;
-    kind: 'eat' | 'explore';
+    kind: 'eat' | 'coffee' | 'explore';
     type_label: string | null;
     rating: number | null;
     rating_count: number | null;
@@ -450,7 +458,7 @@ export function cleanChat(history: unknown): ChatTurn[] {
 export async function aiQuestion(
   input: { text: string } | { audio: Blob; filename: string },
   lang: Lang,
-  trip?: { destination?: string },
+  trip?: { destination?: string; departure?: string },
   chat?: {
     history: ChatTurn[];
     contextDestination?: string;
@@ -491,6 +499,7 @@ export async function aiQuestion(
         context_via: contextVia,
         context_stays: contextStays,
         stay_minutes: stay,
+        chosen_departure: trip?.departure,
       }),
     );
     return toQuestionResult(data, lang);
@@ -510,5 +519,6 @@ export async function aiQuestion(
     form.set('context_stays', JSON.stringify(contextStays));
   }
   if (stay) form.set('stay_minutes', String(stay));
+  if (trip?.departure) form.set('chosen_departure', trip.departure);
   return toQuestionResult(await request<ApiQuestion>(cfg, '/question/voice', { method: 'POST', body: form }), lang);
 }

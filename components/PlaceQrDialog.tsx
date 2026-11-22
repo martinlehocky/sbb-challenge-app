@@ -70,7 +70,7 @@ export function PlaceQrDialog({ place, t, onClose }: { place: QrPlace | null; t:
           </div>
           <div className={styles.hint}>
             <span className={styles.phone} aria-hidden="true">
-              <SbbIcon name="smartphone-medium" />
+              <SbbIcon name="smartphone-small" />
             </span>
             <p className={styles.text}>{t.places.qrText}</p>
           </div>

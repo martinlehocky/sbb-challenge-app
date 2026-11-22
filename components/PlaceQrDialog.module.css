@@ -28,12 +28,13 @@
   height: 7.5rem;
 }
 
+/* A small line under the code, not a big box. */
 .hint {
   display: flex;
   align-items: center;
-  gap: var(--sbb-spacing-fixed-3x);
-  width: 100%;
-  padding: var(--sbb-spacing-fixed-3x) var(--sbb-spacing-fixed-4x);
+  justify-content: center;
+  gap: var(--sbb-spacing-fixed-2x);
+  padding: var(--sbb-spacing-fixed-2x) var(--sbb-spacing-fixed-3x);
   border-radius: var(--sbb-border-radius-4x);
   background-color: var(--sbb-color-milk);
 }
@@ -46,7 +47,7 @@
 
 .text {
   margin: 0;
-  font-size: var(--sbb-text-font-size-s);
+  font-size: var(--sbb-text-font-size-xs);
   line-height: var(--sbb-typo-line-height-heading);
   color: var(--sbb-color-iron);
 }

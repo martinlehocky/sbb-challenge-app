@@ -15,7 +15,7 @@ export default async function Page({ searchParams }: PageProps<'/kiosk/ask'>) {
   return (
     <AskScreen
       now={getNow()}
-      scenario={aboutTrip ? scenario : { ...scenario, to: undefined }}
+      scenario={aboutTrip ? scenario : { ...scenario, to: undefined, dep: undefined }}
       aboutTrip={aboutTrip}
       debug={debug}
     />

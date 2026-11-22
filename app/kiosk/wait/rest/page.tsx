@@ -5,6 +5,6 @@ import { parseScenario } from '@/lib/scenario';
 
 export default async function Page({ searchParams }: PageProps<'/kiosk/wait/rest'>) {
   const scenario = parseScenario(await searchParams);
-  const [rest, ai] = await Promise.all([getRestScenario(scenario.time, scenario.lang, scenario.to), aiStatus()]);
+  const [rest, ai] = await Promise.all([getRestScenario(scenario.time, scenario.lang, scenario.to, scenario.dep), aiStatus()]);
   return <RestScreen rest={rest} scenario={scenario} aiEnabled={ai.enabled} />;
 }

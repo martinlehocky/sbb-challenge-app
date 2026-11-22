@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
+import { useState, useTransition } from 'react';
 import { getMessages, type Messages } from '@/lib/i18n/messages';
 import { withScenario } from '@/lib/scenario';
 import type { Connection, Scenario, TripResult } from '@/lib/types';
@@ -11,6 +13,7 @@ import { LineBadge } from '../LineBadge';
 import { NavButton } from '../NavButton';
 import {
   SbbCard,
+  SbbCardButton,
   SbbIcon,
   SbbNotification,
   SbbTimetableOccupancy,
@@ -44,6 +47,16 @@ export function ResultScreen({
   const canWait = result.minutesToDeparture - BACK_BY_BUFFER_MIN >= MIN_WAIT_MIN;
   const askQuery = withScenario('/kiosk/ask', scenario);
   const askHref = `${askQuery}${askQuery.includes('?') ? '&' : '?'}about=trip`;
+  // Tapping an option makes it the traveller's train: it is kept in the address (?dep=HH:MM), so the wait screens,
+  // the phone page and "Ask about my trip" all use it, and the previous train moves down to the options.
+  const router = useRouter();
+  const [picking, startPicking] = useTransition();
+  const [pickedId, setPickedId] = useState<string | null>(null);
+  const chosen = scenario.dep === best.train.departure;
+  const pick = (c: Connection) => {
+    setPickedId(c.id);
+    startPicking(() => router.replace(withScenario('/kiosk/result', { ...scenario, dep: c.train.departure }), { scroll: false }));
+  };
 
   return (
     <KioskFrame lang={scenario.lang}>
@@ -51,7 +64,7 @@ export function ResultScreen({
         time={result.now}
         start={
           <NavButton
-            href={withScenario('/kiosk', { ...scenario, to: undefined })}
+            href={withScenario('/kiosk', { ...scenario, to: undefined, dep: undefined })}
             variant="secondary"
             iconName="arrows-circle-small"
           >
@@ -69,6 +82,7 @@ export function ResultScreen({
             <AiSummaryText
               lang={scenario.lang}
               to={scenario.to}
+              dep={scenario.dep}
               enabled={aiEnabled}
               fallback={result.disruption.reason}
             />
@@ -78,15 +92,16 @@ export function ResultScreen({
             <SbbTitle level="1" visualLevel="4" className={styles.cancelledTitle}>
               <LineBadge line={planned.line} size="s" /> {t.result.runsAsPlanned(planned.departure)}
             </SbbTitle>
-            <AiSummaryText lang={scenario.lang} to={scenario.to} enabled={aiEnabled} fallback={null} />
+            <AiSummaryText lang={scenario.lang} to={scenario.to} dep={scenario.dep} enabled={aiEnabled} fallback={null} />
           </SbbNotification>
         )}
 
         <section className={styles.section} aria-labelledby="best-train">
           <h2 id="best-train" className={styles.label}>
-            {t.result.bestLabel}
+            {chosen ? t.result.chosenLabel : t.result.bestLabel}
           </h2>
-          <SbbCard color="white" className={styles.bestCard}>
+          {/* Keyed by the train: a newly picked train slides in. */}
+          <SbbCard key={best.id} color="white" className={`${styles.bestCard} ${styles.swapIn}`}>
             <div className={styles.bestTop}>
               <div className={styles.bestLine}>
                 <LineBadge line={best.train.line} size="l" />
@@ -179,10 +194,17 @@ export function ResultScreen({
           <section className={styles.section} aria-labelledby="other-options">
             <h2 id="other-options" className={styles.label}>
               {t.result.otherOptions}
+              <span className={styles.pickHint}> · {t.result.pickHint}</span>
             </h2>
             <ul className={styles.options}>
               {result.alternatives.slice(0, aiEnabled ? 1 : undefined).map((c) => (
-                <OptionRow key={c.id} connection={c} t={t} />
+                <OptionRow
+                  key={c.id}
+                  connection={c}
+                  t={t}
+                  onPick={() => pick(c)}
+                  busy={picking && pickedId === c.id}
+                />
               ))}
             </ul>
           </section>
@@ -217,10 +239,24 @@ export function ResultScreen({
   );
 }
 
-function OptionRow({ connection: c, t }: { connection: Connection; t: Messages }) {
+function OptionRow({
+  connection: c,
+  t,
+  onPick,
+  busy,
+}: {
+  connection: Connection;
+  t: Messages;
+  onPick: () => void;
+  /** This option was tapped and the screen is loading it. */
+  busy: boolean;
+}) {
   return (
-    <li>
-      <SbbCard color="milk" className={styles.option}>
+    <li className={styles.swapIn}>
+      <SbbCard color="milk" className={`${styles.option} ${busy ? styles.optionBusy : ''}`}>
+        <SbbCardButton onClick={onPick}>
+          {t.result.takeTrain(c.train.departure)}
+        </SbbCardButton>
         <div className={styles.optionRow}>
           <div className={styles.optionWhen}>
             <span className={styles.optionTime}>{c.train.departure}</span>
@@ -232,6 +268,7 @@ function OptionRow({ connection: c, t }: { connection: Connection; t: Messages }
               {c.tradeOff}: {c.arrivalStation.name} {c.arrival} · {t.common.changes(c.changes)}
             </span>
           </div>
+          <SbbIcon name="chevron-small-right-small" className={styles.optionChevron} aria-hidden="true" />
         </div>
       </SbbCard>
     </li>

@@ -75,13 +75,13 @@ export function WelcomeScreen({ info, scenario }: { info: WelcomeInfo; scenario:
           <ScreenIntro align="center" title={t.welcome.title} lead={t.welcome.lead} />
           <ul className={styles.choices}>
             <Choice
-              href={withScenario('/kiosk/scan', { ...scenario, to: undefined })}
+              href={withScenario('/kiosk/scan', { ...scenario, to: undefined, dep: undefined })}
               icon="qrcode-large"
               title={t.welcome.scan}
               text={t.welcome.scanText}
             />
             <Choice
-              href={withScenario('/kiosk/ask', { ...scenario, to: undefined })}
+              href={withScenario('/kiosk/ask', { ...scenario, to: undefined, dep: undefined })}
               icon="microphone-medium"
               title={t.welcome.ask}
               text={t.welcome.askText}

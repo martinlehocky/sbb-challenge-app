@@ -147,7 +147,7 @@
 
 .optionRow {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: var(--sbb-spacing-fixed-5x);
 }
@@ -276,5 +276,47 @@
 }
 
 .legSub {
+  color: var(--sbb-color-4);
+}
+
+/* ---------------------------------------------------------------- picking another train */
+
+.pickHint {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: normal;
+  color: var(--sbb-color-4);
+}
+
+/* The newly picked train (and the options under it) slide in. */
+.swapIn {
+  animation: swap-in 320ms ease-out both;
+}
+
+@keyframes swap-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--sbb-spacing-fixed-3x)) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swapIn {
+    animation: none;
+  }
+}
+
+.optionBusy {
+  opacity: 0.55;
+  transition: opacity 150ms ease-out;
+}
+
+.optionChevron {
+  flex: none;
+  margin-inline-start: auto;
   color: var(--sbb-color-4);
 }

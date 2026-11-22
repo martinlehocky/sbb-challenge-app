@@ -15,11 +15,14 @@ import styles from './Ai.module.css';
 export function AiSummaryText({
   lang,
   to,
+  dep,
   enabled,
   fallback,
 }: {
   lang: Lang;
   to?: string;
+  /** The train the traveller picked ("HH:MM"). */
+  dep?: string;
   /** AI is set up for this page (the server checked); the browser checks again before asking. */
   enabled: boolean;
   fallback: ReactNode;
@@ -27,7 +30,7 @@ export function AiSummaryText({
   const t = getMessages(lang);
   const ai = useAiStatus()?.ai ?? null;
   const active = enabled && ai === true;
-  const query = new URLSearchParams({ lang, ...(to ? { to } : {}) }).toString();
+  const query = new URLSearchParams({ lang, ...(to ? { to } : {}), ...(dep ? { dep } : {}) }).toString();
   // The answer is stored with the request it belongs to, so a new request does not show an old text.
   const [result, setResult] = useState<{ query: string; text: string | null } | null>(null);
 

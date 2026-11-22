@@ -33,6 +33,8 @@ export interface BackendConfig {
   at: string;
   kioskStation: string;
   destination: string;
+  /** Departure ("HH:MM") of the train the traveller picked; the backend then advises that one. */
+  prefer?: string;
 }
 
 const DEFAULT_AT = '2026-09-10T11:05:00+02:00';
@@ -225,6 +227,7 @@ const TXT = {
     fr: 'Part plus tôt, arrive plus tard',
     it: 'Parte prima, arriva più tardi',
   } as L,
+  arrivesSooner: { en: 'Arrives sooner', de: 'Kommt früher an', fr: 'Arrive plus tôt', it: 'Arriva prima' } as L,
   fewerChanges: { en: 'Fewer changes', de: 'Weniger Umsteigen', fr: 'Moins de changements', it: 'Meno cambi' } as L,
   laterTrain: { en: 'Later train', de: 'Späterer Zug', fr: 'Train plus tard', it: 'Treno successivo' } as L,
   picked: {
@@ -298,6 +301,8 @@ function routeLabel(j: ApiJourney, lang: Lang): string {
 }
 
 function tradeOff(j: ApiJourney, best: ApiJourney, lang: Lang): string {
+  // After the traveller picked a slower train, the kiosk's best one is listed as an option that arrives sooner.
+  if (Date.parse(j.arrival) < Date.parse(best.arrival)) return TXT.arrivesSooner[lang];
   if (Date.parse(j.departure) < Date.parse(best.departure)) return TXT.leavesSooner[lang];
   if (j.transfers < best.transfers) return TXT.fewerChanges[lang];
   return TXT.laterTrain[lang];
@@ -344,6 +349,7 @@ export function fetchAdvice(cfg: BackendConfig, lang: Lang): Promise<ApiAdvice> 
     at: cfg.at,
     lang,
     alternatives: 3,
+    ...(cfg.prefer ? { prefer_departure: cfg.prefer } : {}),
   });
 }
 

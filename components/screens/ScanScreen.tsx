@@ -22,7 +22,8 @@ type Camera = 'starting' | 'live' | 'none';
 
 /**
  * Screen 2 · Scanning ticket. Demo: ANY QR code shown to the camera counts as the traveller's ticket and opens
- * the demo trip (nothing in the code is read). Without a camera the steps run by themselves, as before.
+ * the demo trip (nothing in the code is read). Nothing about the ticket is shown before a code is seen.
+ * Presenter backup (invisible): the Enter key counts as a scanned ticket, e.g. if the camera fails on stage.
  */
 export function ScanScreen({ trip, scenario }: { trip: Trip; scenario: Scenario }) {
   const router = useRouter();
@@ -32,10 +33,10 @@ export function ScanScreen({ trip, scenario }: { trip: Trip; scenario: Scenario 
   const [camera, setCamera] = useState<Camera>('starting');
   const [found, setFound] = useState(false);
 
-  // With a live camera, the first step waits for a QR code; once one is seen, it reads "Ticket recognised".
-  const waiting = camera === 'live' && !found;
-  const steps = [waiting ? t.scan.waiting : t.scan.recognised(route), t.scan.checking, t.scan.finding];
-  const running = found || camera === 'none';
+  // The first step waits for a QR code; only once one is seen does it read "Ticket recognised: route".
+  const first = found ? t.scan.recognised(route) : camera === 'none' ? t.scan.noCamera : t.scan.waiting;
+  const steps = [first, t.scan.checking, t.scan.finding];
+  const running = found;
 
   // Index of the step in progress; steps before it are done.
   const [active, setActive] = useState(0);
@@ -48,6 +49,15 @@ export function ScanScreen({ trip, scenario }: { trip: Trip; scenario: Scenario 
     setFound(true);
     setActive(1); // "Ticket recognised" is done at once
   }, [setFound, setActive]);
+
+  // Presenter backup: Enter acts like a scanned ticket (nothing on screen gives it away).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && !found) onDetected();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [found, onDetected]);
 
   useEffect(() => {
     if (!running) return;
@@ -82,7 +92,7 @@ export function ScanScreen({ trip, scenario }: { trip: Trip; scenario: Scenario 
           lead={t.scan.lead}
         />
 
-        <Viewfinder trip={trip} t={t} found={found} onCamera={setCamera} onDetected={onDetected} />
+        <Viewfinder t={t} found={found} onCamera={setCamera} onDetected={onDetected} />
 
         <ol className={styles.steps} aria-live="polite">
           {steps.map((text, i) => {
@@ -104,9 +114,6 @@ export function ScanScreen({ trip, scenario }: { trip: Trip; scenario: Scenario 
             <SbbIcon name="lock-closed-small" />
             {t.scan.privacy}
           </p>
-          <NavButton href={resultHref} variant="accent" size="s">
-            {t.scan.demoContinue}
-          </NavButton>
         </div>
       </KioskFooter>
     </KioskFrame>
@@ -152,17 +159,15 @@ async function makeDecoder(): Promise<Decoder> {
 }
 
 /**
- * Dark camera viewfinder. Shows the live webcam if the browser allows it (otherwise a drawn ticket) and looks
+ * Dark camera viewfinder. Shows the live webcam if the browser allows it (otherwise just the dark frame) and looks
  * for a QR code in it. Frames are only decoded in the browser; nothing is recorded or sent anywhere.
  */
 function Viewfinder({
-  trip,
   t,
   found,
   onCamera,
   onDetected,
 }: {
-  trip: Trip;
   t: Messages;
   found: boolean;
   onCamera: (state: Camera) => void;
@@ -193,7 +198,7 @@ function Viewfinder({
         }
       })
       .catch(() => {
-        // No camera or permission denied: keep the drawn ticket, the steps run by themselves.
+        // No camera or permission denied: the dark frame stays, the steps run by themselves.
         if (!cancelled) onCamera('none');
       });
     return () => {
@@ -240,19 +245,6 @@ function Viewfinder({
       data-scan-state={found ? 'found' : live ? 'scanning' : 'idle'}
     >
       <video ref={videoRef} className={styles.video} hidden={!live} autoPlay muted playsInline />
-      {!live && (
-        <div className={styles.ticket} aria-hidden="true">
-          <div className={styles.ticketText}>
-            <strong>
-              {trip.ticket.from.name} → {trip.ticket.to.name}
-            </strong>
-            <span>
-              {t.scan.travelClass(trip.ticket.travelClass)} · {trip.ticket.printedDate}
-            </span>
-          </div>
-          <SbbIcon name="qrcode-large" className={styles.qr} />
-        </div>
-      )}
       <span className={`${styles.corner} ${styles.tl}`} />
       <span className={`${styles.corner} ${styles.tr}`} />
       <span className={`${styles.corner} ${styles.bl}`} />

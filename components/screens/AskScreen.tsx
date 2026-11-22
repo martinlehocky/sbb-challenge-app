@@ -288,7 +288,11 @@ export function AskScreen({
     if (aboutTrip) {
       body.set('about', 'trip');
       if (scenario.to) body.set('to', scenario.to);
-    } else if (context) {
+      if (scenario.dep) body.set('dep', scenario.dep);
+    }
+    // "About my trip" keeps the ticket's trip, except a trip with stops planned in this chat ("first Interlaken,
+    // then Bern"): its stops and stays are sent back, so "Stay 2 h" continues that route.
+    if (context && (!aboutTrip || context.via?.length)) {
       body.set('context', context.destination.id);
       if (context.origin) body.set('context_origin', context.origin.id);
       if (context.via?.length) {
@@ -328,8 +332,9 @@ export function AskScreen({
         places: data.places ?? [],
       });
       // The trip this answer was about becomes the conversation's trip for follow-ups. An answer about no trip
-      // ("where can I get a coffee?") keeps the old one. "About my trip" keeps the ticket's trip.
-      if (data.context && !aboutTrip) setContext(data.context);
+      // ("where can I get a coffee?") keeps the old one. "About my trip" keeps the ticket's trip, unless the answer
+      // planned a trip with stops.
+      if (data.context && (!aboutTrip || data.context.via?.length)) setContext(data.context);
     } catch (err) {
       console.error('[ask] failed:', err);
       setLastDebug((d) => (d && !d.clientError ? { ...d, clientError: (err as Error).message } : d));
@@ -422,7 +427,7 @@ export function AskScreen({
   const lastKiosk = [...messages].reverse().find((m) => m.role === 'kiosk')?.id;
   const back = aboutTrip
     ? { href: withScenario('/kiosk/result', scenario), label: t.common.back, icon: 'chevron-small-left-small' }
-    : { href: withScenario('/kiosk', { ...scenario, to: undefined }), label: t.common.cancel, icon: 'cross-small' };
+    : { href: withScenario('/kiosk', { ...scenario, to: undefined, dep: undefined }), label: t.common.cancel, icon: 'cross-small' };
 
   return (
     <KioskFrame lang={scenario.lang}>
@@ -603,7 +608,7 @@ function Message({
         {m.choices.map((c) => (
           <NavButton
             key={c.id}
-            href={withScenario('/kiosk/result', { ...scenario, to: c.id })}
+            href={withScenario('/kiosk/result', { ...scenario, to: c.id, dep: undefined })}
             iconName="train-small"
             className={styles.tripButton}
           >
@@ -611,7 +616,7 @@ function Message({
           </NavButton>
         ))}
         {m.trip && (
-          <NavButton href={withScenario('/kiosk/result', { ...scenario, to: m.trip.id })} className={styles.tripButton}>
+          <NavButton href={withScenario('/kiosk/result', { ...scenario, to: m.trip.id, dep: undefined })} className={styles.tripButton}>
             {t.ask.showTrain} · {m.trip.name}
           </NavButton>
         )}
