@@ -39,7 +39,7 @@ const val = (v: unknown) => (v === null || v === undefined || v === '' ? '—' :
 
 /**
  * Debugging for the voice / text search: what the microphone heard, what Whisper transcribed,
- * what the AI extracted and which stations it matched. Hidden with ?debug=0.
+ * what the AI extracted and which stations it matched. Shown only with ?debug=1.
  */
 export function AskDebugPanel({
   live,
