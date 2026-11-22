@@ -4,6 +4,7 @@ Connections are (departure, arrival, from-station, to-station, trip) pairs of co
 They are built per service day from SQLite and cached. All times are Unix epoch seconds.
 Disruptions are applied by "blocking" connections. Nobody can ride a train across a blocked
 connection; the train may be boarded again after it (like "the IC3 only runs from Sargans").
+For demos, given trains can run late (`delays`): every stop of that train is shifted by the delay.
 """
 from __future__ import annotations
 
@@ -64,6 +65,7 @@ class Leg:
     to_platform: str | None
     stops: list[tuple[Station, int, int]] = field(default_factory=list)  # (station, arrival, departure)
     connections: list[Connection] = field(default_factory=list)
+    delay_min: int = 0  # the train runs this late (demo delays); its times above already include it
 
     def to_dict(self) -> dict:
         return {
@@ -78,6 +80,7 @@ class Leg:
             "departure": to_iso(self.departure),
             "arrival": to_iso(self.arrival),
             "duration_min": round((self.arrival - self.departure) / 60),
+            "delay_min": self.delay_min,
             "stops": [
                 {"id": s.id, "name": s.name, "arrival": to_iso(a), "departure": to_iso(d)} for s, a, d in self.stops
             ],
@@ -115,8 +118,11 @@ class Journey:
 
 class Planner:
     def __init__(self, conn: sqlite3.Connection, stations: StationIndex, default_transfer_s: int = 180,
-                 cache_days: int = 3):
+                 cache_days: int = 3, delays: dict[tuple[date, str], int] | None = None):
         self.conn = conn
+        # Demo delays: (service day, train number) -> minutes late; _late_runs: trip run -> minutes late.
+        self.delays = dict(delays or {})
+        self._late_runs: dict[int, int] = {}
         self.stations = stations
         self.default_transfer_s = default_transfer_s
         self._lock = threading.Lock()
@@ -162,6 +168,13 @@ class Planner:
         trip_ids = sorted(t for sid in self.active_services(day) for t in self._service_trips.get(sid, []))
         base = service_day_start(day)
         slot = day.toordinal() % DAY_SLOTS
+        late: dict[int, int] = {}
+        if self.delays:
+            for t in trip_ids:
+                info = self.trips.get(t)
+                minutes = self.delays.get((day, str(info.train_no))) if info and info.train_no else None
+                if minutes:
+                    late[t] = minutes
         conns: list[Connection] = []
         for i in range(0, len(trip_ids), SQL_CHUNK):
             chunk = trip_ids[i:i + SQL_CHUNK]
@@ -174,13 +187,16 @@ class Planner:
             for trip, station, platform, arr, dep in rows:
                 if prev is not None and prev[0] == trip:
                     p_station, p_platform, p_dep = prev[1], prev[2], prev[4]
-                    a = base + arr
-                    d = base + p_dep
+                    shift = late.get(trip, 0) * 60
+                    a = base + arr + shift
+                    d = base + p_dep + shift
                     if a >= d:  # guard against broken rows
                         conns.append((d, a, p_station, station, trip * DAY_SLOTS + slot, p_platform, platform))
                 prev = (trip, station, platform, arr, dep)
         conns.sort(key=lambda c: (c[0], c[1]))
         with self._lock:
+            for t, minutes in late.items():
+                self._late_runs[t * DAY_SLOTS + slot] = minutes
             self._cache[day] = conns
             while len(self._cache) > self._cache_days:
                 self._cache.popitem(last=False)
@@ -283,7 +299,7 @@ class Planner:
             headsign=info.headsign if info else None, train_no=info.train_no if info else None,
             operator=info.agency if info else None, from_station=get(first[2]), to_station=get(last[3]),  # type: ignore[arg-type]
             departure=first[0], arrival=last[1], from_platform=first[5], to_platform=last[6],
-            stops=stops, connections=chain,
+            stops=stops, connections=chain, delay_min=self._late_runs.get(run, 0),
         )
 
     def journeys(self, origin: int, dest: int, depart_at: int, count: int = 3, horizon_s: int = 12 * 3600,

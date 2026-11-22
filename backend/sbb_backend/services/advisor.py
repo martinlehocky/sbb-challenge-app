@@ -43,6 +43,12 @@ T = {
         "it": "Prenda il {train} delle {time}{platform} in direzione {direction}.",
     },
     "platform": {"en": " from platform {p}", "de": " ab Gleis {p}", "fr": ", voie {p}", "it": " dal binario {p}"},
+    "late": {
+        "en": " (running {m} min late)",
+        "de": " (mit {m} Min. Verspätung)",
+        "fr": " (avec {m} min de retard)",
+        "it": " (in ritardo di {m} min)",
+    },
     "change": {
         "en": "Change at {stations}.",
         "de": "Umsteigen in {stations}.",
@@ -252,8 +258,9 @@ class Advisor:
             return " ".join(parts)
         first = best.legs[0]
         platform = T["platform"][lang].format(p=first.from_platform) if first.from_platform else ""
+        late = T["late"][lang].format(m=first.delay_min) if first.delay_min else ""
         parts.append(T["take"][lang].format(
-            train=_train_label(first, lang), time=hhmm(first.departure), platform=platform,
+            train=_train_label(first, lang), time=hhmm(first.departure) + late, platform=platform,
             direction=first.headsign or first.to_station.name,
         ))
         if best.transfers:

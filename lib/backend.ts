@@ -107,6 +107,8 @@ interface ApiLeg {
   to: ApiLegEnd;
   departure: string;
   arrival: string;
+  /** Minutes late (demo delays); the times above already include it. */
+  delay_min?: number;
 }
 interface ApiJourney {
   departure: string;
@@ -310,6 +312,7 @@ export function mapConnection(j: ApiJourney, lang: Lang, dest: Station, best?: A
       direction: first.direction ?? undefined,
       departure: clock(first.departure),
       platform: first.from.platform ?? '–',
+      ...(first.delay_min ? { lateMinutes: first.delay_min } : {}),
     },
     arrival: clock(j.arrival),
     arrivalStation: dest,

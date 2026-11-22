@@ -125,6 +125,12 @@ export function ResultScreen({
               </div>
             </dl>
 
+            {best.train.lateMinutes ? (
+              <p className={`${styles.fact} ${styles.late}`}>
+                <SbbIcon name="clock-small" />
+                <span>{t.result.runningLate(best.train.lateMinutes)}</span>
+              </p>
+            ) : null}
             {best.legs && best.legs.length > 1 ? (
               <section className={styles.journey} aria-label={t.result.yourJourney}>
                 <p className={styles.journeyTitle}>

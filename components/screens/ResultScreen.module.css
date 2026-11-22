@@ -125,6 +125,11 @@
   color: var(--sbb-color-success);
 }
 
+/* "This train is running 30 min late today." */
+.late {
+  color: var(--sbb-color-red);
+}
+
 .options {
   display: flex;
   flex-direction: column;

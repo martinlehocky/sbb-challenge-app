@@ -86,6 +86,7 @@ const en = {
     vsPlan: 'vs. your plan',
     plusMin: (n: number) => `+${n}${NB}min`,
     direct: 'Direct, no changes.',
+    runningLate: (n: number) => `This train is running ${n}${NB}min late today.`,
     ticketValid: (
       <>
         <strong>Your ticket is valid</strong> on this train.
@@ -264,6 +265,7 @@ const de: Messages = {
     vsPlan: 'gegenüber Ihrem Plan',
     plusMin: (n) => `+${n}${NB}Min.`,
     direct: 'Direkt, ohne Umsteigen.',
+    runningLate: (n: number) => `Dieser Zug hat heute ${n}${NB}Min. Verspätung.`,
     ticketValid: (
       <>
         <strong>Ihr Billett ist gültig.</strong>
@@ -440,6 +442,7 @@ const fr: Messages = {
     vsPlan: 'par rapport au plan',
     plusMin: (n) => `+${n}${NB}min`,
     direct: 'Direct, sans changement.',
+    runningLate: (n: number) => `Ce train circule aujourd’hui avec ${n}${NB}min de retard.`,
     ticketValid: (
       <>
         <strong>Votre billet est valable.</strong>
@@ -616,6 +619,7 @@ const it: Messages = {
     vsPlan: 'rispetto al piano',
     plusMin: (n) => `+${n}${NB}min`,
     direct: 'Diretto, senza cambi.',
+    runningLate: (n: number) => `Oggi questo treno viaggia con ${n}${NB}min di ritardo.`,
     ticketValid: (
       <>
         <strong>Il suo biglietto è valido.</strong>

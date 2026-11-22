@@ -4,7 +4,7 @@ from __future__ import annotations
 import base64
 import json
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import httpx
 import pytest
@@ -103,6 +103,24 @@ def test_disruption_endpoints(client_no_ai):
     assert client_no_ai.get("/api/v1/disruptions/nope/timeline").status_code == 404
     assert client_no_ai.get("/api/v1/disruptions/scenarios").json()[0]["id"] == "900"
     assert client_no_ai.get("/api/v1/disruptions", params={"at": "not a time"}).status_code == 422
+
+
+def test_demo_train_delay_shifts_the_train_and_is_said(settings):
+    """DEMO_TRAIN_DELAYS: the S1 at 11:00 (train 1011) runs 3 min late on 10 Sept only; the advice says so."""
+    from sbb_backend.api import parse_demo_delays
+    assert parse_demo_delays("2026-09-10:1011:3, bad, 2026-13-01:1:2") == {(date(2026, 9, 10), "1011"): 3}
+    app = create_app(replace(settings, demo_train_delays="2026-09-10:1011:3"))
+    with TestClient(app) as c:
+        def first_leg(after):
+            return c.get("/api/v1/journeys", params={"origin": "Alpha", "destination": "Delta",
+                                                      "depart_after": after}).json()["journeys"][0]["legs"][0]
+        leg = first_leg("2026-09-10T10:59")
+        assert (leg["line"], leg["departure"][11:16], leg["arrival"][11:16], leg["delay_min"]) == ("S1", "11:03", "11:33", 3)
+        other_day = first_leg("2026-09-11T10:59")
+        assert (other_day["departure"][11:16], other_day["delay_min"]) == ("11:00", 0)
+        body = c.post("/api/v1/advice", json={"origin": "Alpha", "destination": "Beta",
+                                              "at": "2026-09-10T10:59:00+02:00"}).json()
+        assert "Take the S1 at 11:03 (running 3 min late)" in body["message"]
 
 
 def test_journeys_and_advice(client_no_ai):

@@ -81,6 +81,8 @@ export interface TrainRun {
   direction?: string;
   departure: ClockTime;
   platform: string;
+  /** The train runs this many minutes late; `departure` already includes it (only set when it is late). */
+  lateMinutes?: number;
 }
 
 /** The traveller's trip as recognised from the ticket. */

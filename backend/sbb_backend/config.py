@@ -71,6 +71,9 @@ class Settings:
 
     # Google Places API (New): real places near the station, with photos, for the wait-idea screens. Optional.
     google_maps_api_key: str | None = field(default_factory=lambda: _env("GOOGLE_MAPS_API_KEY"))
+    # Demo only: trains that run late, as "YYYY-MM-DD:train_no:minutes" separated by commas
+    # (e.g. "2026-09-10:2365:40" = the IR 35 at 11:12 from Zürich HB leaves 40 minutes late). Empty = none.
+    demo_train_delays: str | None = field(default_factory=lambda: _env("DEMO_TRAIN_DELAYS"))
     google_places_base_url: str = field(default_factory=lambda: _env("GOOGLE_PLACES_BASE_URL", "https://places.googleapis.com/v1"))
 
     @property

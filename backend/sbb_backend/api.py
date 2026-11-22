@@ -7,6 +7,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import date
 from typing import Literal
 
 import httpx
@@ -68,13 +69,28 @@ class Services:
     places: PlacesService
 
 
+def parse_demo_delays(spec: str | None) -> dict[tuple[date, str], int]:
+    """DEMO_TRAIN_DELAYS ("2026-09-10:2365:40,…") as {(day, train number): minutes}; bad entries are skipped."""
+    out: dict[tuple[date, str], int] = {}
+    for item in (spec or "").split(","):
+        parts = item.strip().split(":")
+        if len(parts) != 3:
+            continue
+        try:
+            out[(date.fromisoformat(parts[0]), parts[1].strip())] = int(parts[2])
+        except ValueError:
+            log.warning("DEMO_TRAIN_DELAYS: ignoring %r", item)
+    return out
+
+
 def build_services(settings: Settings, ai_transport: httpx.BaseTransport | None = None,
                    places_transport: httpx.BaseTransport | None = None) -> Services:
     conn = connect(settings.db_path, readonly=True)
     meta = {r["key"]: r["value"] for r in conn.execute("SELECT key, value FROM meta")}
     stations = StationIndex(conn)
     disruptions = DisruptionStore(conn, stations)
-    planner = Planner(conn, stations, default_transfer_s=settings.default_transfer_seconds)
+    planner = Planner(conn, stations, default_transfer_s=settings.default_transfer_seconds,
+                      delays=parse_demo_delays(settings.demo_train_delays))
     ai = TogetherClient(settings, transport=ai_transport)
     advisor = Advisor(stations, disruptions, planner, ai, settings.disruption_radius_m)
     location = LocationService(stations, disruptions, ai)

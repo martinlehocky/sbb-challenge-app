@@ -4,7 +4,7 @@ Clickable front-end of our station "disruption kiosk": a traveller whose train w
 
 The front-end runs in two modes:
 
-- **Live** (`BACKEND_URL` set): trip, disruption and train data come from the Python backend in [`backend/`](backend/README.md), built from the real SBB data, for the simulated moment `DEMO_AT` (default 10 Sep 2026 11:05, Zürich HB → Sargans). On that day an overhead line fault between Wädenswil and Pfäffikon SZ cancels the 11:07 train; the kiosk proposes the IR 35 at 11:12.
+- **Live** (`BACKEND_URL` set): trip, disruption and train data come from the Python backend in [`backend/`](backend/README.md), built from the real SBB data, for the simulated moment `DEMO_AT` (default 10 Sep 2026 11:05, Zürich HB → Sargans). On that day an overhead line fault between Wädenswil and Pfäffikon SZ cancels the 11:07 train; the kiosk proposes the IR 35. For the pitch, `DEMO_TRAIN_DELAYS` in `backend/.env` makes that IR 35 run 30 min late (11:42 instead of 11:12), so the traveller has 37 min and the kiosk suggests places to go; without it the next train leaves at 11:12 and the kiosk says "go to your platform".
 - **Mock** (no `BACKEND_URL`): the hand-written demo scenario from `docs/SCREENS.md` (IC 3 at 11:07 cancelled, IR 35 at 11:37).
 
 The UI follows `docs/SCREENS.md` (screen spec: wording, layout, demo data) and is built with SBB's official design system **Lyne** (`@sbb-esta/lyne-*` 5.13.3): SBB theme, design tokens, fonts, real SBB icons, logo and station clock.
