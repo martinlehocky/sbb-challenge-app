@@ -60,7 +60,7 @@ const en = {
     staff: 'Prefer to talk to someone? Staff are at the info point in the main hall.',
   },
   scan: {
-    cameraAbove: 'Camera is above the screen',
+    cameraBelow: 'Camera is below the screen',
     title: 'Hold your ticket up to the camera',
     lead: 'Paper ticket, SwissPass or the QR code in the SBB app',
     recognised: (route: string) => `Ticket recognised: ${route}`,
@@ -242,7 +242,7 @@ const de: Messages = {
     staff: 'Lieber mit jemandem sprechen? Unser Personal ist am Infoschalter in der Haupthalle.',
   },
   scan: {
-    cameraAbove: 'Die Kamera ist über dem Bildschirm',
+    cameraBelow: 'Die Kamera ist unter dem Bildschirm',
     title: 'Halten Sie Ihr Billett vor die Kamera',
     lead: 'Papierbillett, SwissPass oder der QR-Code in der SBB App',
     recognised: (route) => `Billett erkannt: ${route}`,
@@ -422,7 +422,7 @@ const fr: Messages = {
     staff: `Vous préférez parler à quelqu’un${NB}? Notre personnel se trouve au point d’information dans le hall principal.`,
   },
   scan: {
-    cameraAbove: 'La caméra se trouve au-dessus de l’écran',
+    cameraBelow: 'La caméra se trouve sous l’écran',
     title: 'Présentez votre billet devant la caméra',
     lead: 'Billet papier, SwissPass ou code QR dans l’app CFF',
     recognised: (route) => `Billet reconnu${NB}: ${route}`,
@@ -602,7 +602,7 @@ const it: Messages = {
     staff: 'Preferisce parlare con qualcuno? Il personale si trova al punto informazioni nell’atrio principale.',
   },
   scan: {
-    cameraAbove: 'La telecamera è sopra lo schermo',
+    cameraBelow: 'La telecamera è sotto lo schermo',
     title: 'Tenga il biglietto davanti alla telecamera',
     lead: 'Biglietto cartaceo, SwissPass o codice QR nell’app FFS',
     recognised: (route) => `Biglietto riconosciuto: ${route}`,

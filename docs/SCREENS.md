@@ -22,7 +22,7 @@ All data is **mock data** for the demo scenario: **10 Sep 2026, Zürich HB, trav
 - Primary button (scan icon): **"Scan my ticket"** → 2. Secondary button: **"No ticket? Type your destination"** (not wired yet). Footer: "Prefer to talk to someone? Staff are at the info point in the main hall."
 
 ## 2 · Scanning ticket (`/kiosk/scan`)
-- Header: "Cancel" (→ 1), centre "↑ Camera is above the screen", time 11:05.
+- Header: "Cancel" (→ 1), centre "↓ Camera is below the screen", time 11:05.
 - Heading **"Hold your ticket up to the camera"** / "Paper ticket, SwissPass or the QR code in the SBB app".
 - Large dark camera viewfinder (~820 × 820) with white corner brackets, a red scan line, and a tilted ticket inside showing "Zürich HB → Sargans, 2nd class · 10.09." + QR code.
 - Progress list: ✓ **"Ticket recognised: Zürich HB → Sargans"** · ⟳ **"Checking your train against live disruptions…"** · ○ "Finding your best alternative". (Animate through the steps, then go to 3.)

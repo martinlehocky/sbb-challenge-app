@@ -82,8 +82,8 @@ export function ScanScreen({ trip, scenario }: { trip: Trip; scenario: Scenario 
         }
         center={
           <>
-            <SbbIcon name="arrow-up-small" />
-            {t.scan.cameraAbove}
+            <SbbIcon name="arrow-down-small" />
+            {t.scan.cameraBelow}
           </>
         }
       />
