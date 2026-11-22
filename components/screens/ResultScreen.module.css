@@ -202,6 +202,24 @@
 .actions .goNow {
   font-size: var(--sbb-text-font-size-s);
   --sbb-notification-padding-block: var(--sbb-spacing-fixed-2x);
+  /* The built-in icon sits in its own left column; hide it and show it next to the text, centred together. */
+  --sbb-notification-icon-size: 0;
+  --sbb-notification-content-padding-inline: 0;
+}
+
+.goNowContent {
+  display: block;
+  text-align: center;
+  /* Two even lines when the text wraps (French), never one word alone on the second line. */
+  text-wrap: balance;
+}
+
+/* The icon flows with the text, so it always sits right before the first word. */
+.goNowContent > sbb-icon {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-inline-end: var(--sbb-spacing-fixed-3x);
+  translate: 0 -0.08em;
 }
 
 .towards {

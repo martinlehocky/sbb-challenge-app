@@ -190,7 +190,11 @@ export function ResultScreen({
             </NavButton>
           ) : (
             <SbbNotification type="warn" readOnly animation="none" className={styles.goNow}>
-              {t.result.goToPlatform(best.train.platform)}
+              {/* Icon and text centred together: the notification's own icon is hidden (see .goNow). */}
+              <span className={styles.goNowContent}>
+                <SbbIcon name="circle-exclamation-point-small" aria-hidden="true" />
+                {t.result.goToPlatform(best.train.platform)}
+              </span>
             </SbbNotification>
           )}
           <div className={styles.secondaryActions}>
