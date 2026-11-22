@@ -33,9 +33,11 @@ export function ScanScreen({ trip, scenario }: { trip: Trip; scenario: Scenario 
   const [camera, setCamera] = useState<Camera>('starting');
   const [found, setFound] = useState(false);
 
-  // The first step waits for a QR code; only once one is seen does it read "Ticket recognised: route".
-  const first = found ? t.scan.recognised(route) : camera === 'none' ? t.scan.noCamera : t.scan.waiting;
-  const steps = [first, t.scan.checking, t.scan.finding];
+  // Before a QR code is seen, only the waiting line is shown; the ticket's steps ("Ticket recognised: route",
+  // checking disruptions, finding the best alternative) appear once one is seen.
+  const steps = found
+    ? [t.scan.recognised(route), t.scan.checking, t.scan.finding]
+    : [camera === 'none' ? t.scan.noCamera : t.scan.waiting];
   const running = found;
 
   // Index of the step in progress; steps before it are done.
