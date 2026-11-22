@@ -149,7 +149,9 @@ class Advisor:
         self.radius_m = radius_m
 
     def advise(self, origin: Station, dest: Station, at: int, depart_at: int | None = None, lang: str = "en",
-               count: int = 3, horizon_h: int = 12, ai_message: bool = False) -> dict:
+               count: int = 3, horizon_h: int = 12, ai_message: bool = False, catch_from: int | None = None) -> dict:
+        """`catch_from`: the earliest departure the traveller can still reach (the kiosk is a few minutes from the
+        platforms). The planned train stays the one from `depart_at`; only the advice leaves after `catch_from`."""
         lang = lang if lang in LANGS else "en"
         depart = depart_at if depart_at is not None else at
         horizon_s = horizon_h * 3600
@@ -182,12 +184,24 @@ class Advisor:
         if not affecting:
             status = "ok"
             best = plan
-            alternatives = [plan]
+            # The next trains too, so "and the one after that?" has an answer.
+            more = self.planner.journeys(origin.id, dest.id, depart, count=count, horizon_s=horizon_s)
+            alternatives = [plan] + [j for j in more if j.departure != plan.departure][:max(count - 1, 0)]
         else:
             alternatives = self.planner.journeys(origin.id, dest.id, depart, count=count, horizon_s=horizon_s,
                                                  blocked=checker)
             status = "affected" if alternatives else "no_alternative"
             best = alternatives[0] if alternatives else None
+        if catch_from is not None and best is not None and best.departure < catch_from:
+            # Leaves before the traveller can reach the platform: the next ones they can still catch.
+            later = self.planner.journeys(origin.id, dest.id, catch_from, count=count, horizon_s=horizon_s,
+                                          blocked=checker if affecting else None)
+            if not affecting and later:
+                plan = later[0]  # nothing is wrong with the trip: the next train is simply the plan
+            alternatives = later
+            best = later[0] if later else None
+            if best is None:
+                status = "no_alternative"
 
         message = self._message(lang, status, plan, best, dest, list(affecting.values()), nearby)
         result = {

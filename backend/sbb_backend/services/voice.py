@@ -1,6 +1,8 @@
 """Understand a spoken or typed trip request ("I need to get to Geneva", "von Bern nach Olten")."""
 from __future__ import annotations
 
+import re
+
 from ..ai import AIError, TogetherClient
 from ..textutil import normalize
 from .stations import Station, StationIndex
@@ -73,6 +75,57 @@ def _said_list(value: object) -> list[str]:
 _FIRST_WORDS = {"after", "apres", "dopo", "first", "zuerst", "erst", "prima", "abord"}
 
 
+# Words that, right before a place, make it the start ("from Winterthur", "ab Bern", "de Genève", "da Lugano").
+_ORIGIN_WORDS = {"from", "von", "ab", "depuis", "de", "du", "da", "dal", "dalla", "starting"}
+_ORIGIN_PHRASES = ("i am in", "i m in", "im in", "ich bin in", "je suis a", "sono a", "i am at", "ich bin am")
+# "First Luzern, then Lugano": a stop on the way, not a choice between two places.
+_THEN = re.compile(r"(?<!\w)(then|dann|danach|anschliessend|anschließend|puis|ensuite|poi|dopo|afterwards)(?!\w)", re.I)
+# Station names that are also everyday words; such a station only counts after a word like "to" ("nach Zug"),
+# never in "Wann fährt mein Zug?" (Zug = train).
+_WORD_STATIONS = {"zug": re.compile(r"(?<!\w)(nach|to|in|à|a|für|pour|per|von|from|ab|bis|vers|towards|richtung|"
+                                    r"de|da|di|near|around|um|bei)\s+zug(?!\w)", re.I)}
+
+
+# "von Bern", "from Winterthur", "de Genève", "da Lugano" + a capitalised name: the start, if the AI missed it.
+_FROM_PLACE = re.compile(r"(?<!\w)(?i:from|von|ab|depuis|de|du|da|dal|dalla)\s+"
+                         r"([A-ZÄÖÜÉÈÀÂÎÔÛ][\w'’.\-/]*(?:\s+[A-ZÄÖÜÉÈÀÂÎÔÛ][\w'’.\-/]*)?)")
+
+
+def _origin_in_text(stations: StationIndex, text: str, taken: list[str]) -> str | None:
+    """A start station the traveller says in their own words ("Von Bern nach Thun"), not one of `taken`."""
+    names = {normalize(n) for n in taken}
+    for m in _FROM_PLACE.finditer(text):
+        words = m.group(1).rstrip(".?!,;:").split()
+        for n in (len(words), 1):
+            said = " ".join(words[:n])
+            hit = stations.match(said)
+            if hit["station"] is not None and hit["how"] in ("exact", "only", "busiest") and \
+                    normalize(hit["station"].name) not in names and normalize(said) not in names:
+                return said
+    return None
+
+
+def _said_as_origin(text: str, place: str) -> bool:
+    """True if the text says `place` is where the trip starts ("from Winterthur", "Ich bin in Bern")."""
+    hay = f" {normalize(text)} "
+    name = normalize(place)
+    at = hay.find(f" {name} ") if name else -1
+    if at < 0:
+        return True  # cannot tell: trust the AI
+    before = hay[:at].split()
+    return bool(before) and (before[-1] in _ORIGIN_WORDS or " ".join(before[-3:]).endswith(_ORIGIN_PHRASES))
+
+
+def _drop_word_stations(text: str, names: list[str]) -> list[str]:
+    """Leave out "Zug" when the text only uses it as the word for train ("mein Zug", "der nächste Zug")."""
+    return [n for n in names if normalize(n) not in _WORD_STATIONS or _WORD_STATIONS[normalize(n)].search(text)]
+
+
+def _said_in_order(text: str, names: list[str]) -> list[str]:
+    hay = f" {normalize(text)} "
+    return sorted(names, key=lambda n: (hay.find(f" {normalize(n)} ") + 1 or 10**6))
+
+
 def _said_as_first_stop(text: str, place: str) -> bool:
     """True if `place` follows a word such as 'after' or 'first' in the text ("Après Interlaken, …")."""
     hay = f" {normalize(text)} "
@@ -123,7 +176,9 @@ def understand_trip(stations: StationIndex, ai: TogetherClient | None, text: str
                 "names only one place, it is a destination. List every destination they name (for 'Bern or "
                 "Basel', both). Always give the official Swiss station name, not a translation (for example "
                 "Genève for Geneva or Genf, Bern for Berne, Luzern for Lucerne, Chur for Coira, Basel SBB for "
-                "Basel, St-Maurice for Saint-Maurice). For a place abroad, give its name as the traveller said it. "
+                "Basel, St-Maurice for Saint-Maurice). 'The airport' (Flughafen, aéroport, aeroporto) is a destination: give "
+                "'airport', or the city's airport if a city is named ('Geneva airport'). For a place abroad, give its "
+                "name as the traveller said it. "
                 "If the traveller wants to visit a place first and then go on ('first Interlaken, then Bern', "
                 "'after Interlaken I would like to go to Bern', 'Interlaken and then Bern'), put the place visited "
                 "first in via and the last place in destinations; that place is NOT the origin. The origin is only "
@@ -165,6 +220,21 @@ def understand_trip(stations: StationIndex, ai: TogetherClient | None, text: str
                 # "Après Interlaken, j'aimerais aller à Bern": Interlaken is the first stop, not the start.
                 said_via.insert(0, said_origin)
                 said_origin = ""
+            said = _drop_word_stations(text, said)
+            if said_origin and not _drop_word_stations(text, [said_origin]):
+                said_origin = ""
+            if said_origin and not said and not said_via and not conversation and \
+                    not _said_as_origin(text, said_origin):
+                # "Quel train pour Winterthur ?": one place and no "from": it is where they want to go.
+                said, said_origin = [said_origin], ""
+            origin_from_text = False
+            if not said_origin and said:
+                said_origin = _origin_in_text(stations, text, said + said_via) or ""
+                origin_from_text = bool(said_origin)
+            if len(said) >= 2 and not said_via and _THEN.search(text):
+                # "Zuerst nach Luzern, dann nach Lugano": stops in the order said, the last one is the destination.
+                ordered = _said_in_order(text, said)
+                said_via, said = ordered[:-1], ordered[-1:]
             stay = data.get("stay_minutes")
             raw = {"origin": said_origin or None, "destinations": said, "language": data.get("language")}
             if said_via:
@@ -173,7 +243,7 @@ def understand_trip(stations: StationIndex, ai: TogetherClient | None, text: str
                 raw["stay_minutes"] = stay
             # With a conversation, a start station may have been taken from earlier messages; the caller only
             # keeps such an origin if it is the start of the trip already being discussed.
-            origin_from_conversation = bool(conversation and said_origin) and \
+            origin_from_conversation = bool(conversation and said_origin) and not origin_from_text and \
                 data.get("origin_in_latest_message") is not True
             if conversation:
                 raw["origin_in_latest_message"] = data.get("origin_in_latest_message")
@@ -195,7 +265,7 @@ def understand_trip(stations: StationIndex, ai: TogetherClient | None, text: str
             note = f"AI trip extraction failed, used text matching: {exc}"
     else:
         note = None
-    found = stations_in_order(stations, text)
+    found = [st for st in stations_in_order(stations, text) if _drop_word_stations(text, [st.name])]
     exact = lambda st: {"said": st.name, "station": st, "choices": [st], "how": "exact"}  # noqa: E731
     if len(found) >= 2:
         return {"origin": found[0], "destination": found[1], "method": "text_match", "language": None, "note": note,

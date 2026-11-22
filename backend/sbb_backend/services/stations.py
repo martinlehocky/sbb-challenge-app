@@ -50,6 +50,13 @@ EXONYMS = {
     "martinach": "Martigny", "delsberg": "Delémont", "pruntrut": "Porrentruy",
     "losanna": "Lausanne", "bellinzone": "Bellinzona", "glaris": "Glarus", "coira": "Chur",
     "neuchatel": "Neuchâtel", "soletta": "Solothurn", "lucerna": "Luzern", "olten": "Olten",
+    # "The airport" at a Zürich kiosk is Zürich airport; Geneva's airport by its city name.
+    "airport": "Zürich Flughafen", "the airport": "Zürich Flughafen", "flughafen": "Zürich Flughafen",
+    "aeroport": "Zürich Flughafen", "aeroporto": "Zürich Flughafen", "zurich airport": "Zürich Flughafen",
+    "flughafen zurich": "Zürich Flughafen", "zurich flughafen": "Zürich Flughafen", "kloten": "Zürich Flughafen",
+    "aeroport de zurich": "Zürich Flughafen", "aeroporto di zurigo": "Zürich Flughafen",
+    "geneva airport": "Genève-Aéroport", "aeroport de geneve": "Genève-Aéroport", "flughafen genf": "Genève-Aéroport",
+    "genf flughafen": "Genève-Aéroport", "aeroporto di ginevra": "Genève-Aéroport", "cointrin": "Genève-Aéroport",
 }
 
 
