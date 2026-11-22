@@ -20,8 +20,9 @@
   margin-inline-end: var(--sbb-spacing-fixed-2x);
 }
 
+/* inline-flex (not inline-block): flows with the text and keeps Lyne's centring of the label in the pill. */
 .inlineSummary sbb-chip-label {
-  display: inline-block;
+  display: inline-flex;
   vertical-align: middle;
 }
 

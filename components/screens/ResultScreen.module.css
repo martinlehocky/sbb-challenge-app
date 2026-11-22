@@ -202,14 +202,18 @@
 .actions .goNow {
   font-size: var(--sbb-text-font-size-s);
   --sbb-notification-padding-block: var(--sbb-spacing-fixed-2x);
-  /* The built-in icon sits in its own left column; hide it and show it next to the text, centred together. */
+  /* The built-in icon sits in its own left column; hide it and show it next to the text, centred together.
+     Its height must go too, or the text sits above the middle (Lyne 5.13 internal variable). */
   --sbb-notification-icon-size: 0;
   --sbb-notification-content-padding-inline: 0;
+  --_sbb-notification-icon-authoritative-line-height: 0;
 }
 
 .goNowContent {
   display: block;
   text-align: center;
+  /* Centred on the whole box, with the coloured stripe on the left (as wide as the corner radius). */
+  translate: calc(var(--sbb-notification-base-border-radius) / -2) 0;
   /* Two even lines when the text wraps (French), never one word alone on the second line. */
   text-wrap: balance;
 }
