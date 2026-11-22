@@ -149,9 +149,12 @@ class Advisor:
         self.radius_m = radius_m
 
     def advise(self, origin: Station, dest: Station, at: int, depart_at: int | None = None, lang: str = "en",
-               count: int = 3, horizon_h: int = 12, ai_message: bool = False, catch_from: int | None = None) -> dict:
+               count: int = 3, horizon_h: int = 12, ai_message: bool = False, catch_from: int | None = None,
+               prefer_departure: str | None = None) -> dict:
         """`catch_from`: the earliest departure the traveller can still reach (the kiosk is a few minutes from the
-        platforms). The planned train stays the one from `depart_at`; only the advice leaves after `catch_from`."""
+        platforms). The planned train stays the one from `depart_at`; only the advice leaves after `catch_from`.
+        `prefer_departure` ("HH:MM"): the connection the traveller picked on the kiosk (one of the options leaving
+        then); it becomes the advice and the others the alternatives. Unknown times are ignored."""
         lang = lang if lang in LANGS else "en"
         depart = depart_at if depart_at is not None else at
         horizon_s = horizon_h * 3600
@@ -202,6 +205,19 @@ class Advisor:
             best = later[0] if later else None
             if best is None:
                 status = "no_alternative"
+        chosen = False
+        if prefer_departure and best is not None:
+            match = next((j for j in alternatives if hhmm(j.departure) == prefer_departure), None)
+            if match is None:  # a later option than the first few
+                more = self.planner.journeys(origin.id, dest.id, catch_from or depart, count=8, horizon_s=horizon_s,
+                                             blocked=checker if affecting else None)
+                match = next((j for j in more if hhmm(j.departure) == prefer_departure), None)
+                if match is not None:
+                    alternatives = [*alternatives, match]
+            if match is not None:
+                alternatives = [match, *[j for j in alternatives if j is not match]][:max(count, 2)]
+                best = match
+                chosen = True
 
         message = self._message(lang, status, plan, best, dest, list(affecting.values()), nearby)
         result = {
@@ -216,6 +232,8 @@ class Advisor:
                 {**j.to_dict(), "delay_vs_plan_min": round((j.arrival - plan.arrival) / 60)} for j in alternatives
             ],
             "next_move": self._next_move(best, lang, at) if best else None,
+            # True when `best` is the connection the traveller picked (prefer_departure), not the kiosk's pick.
+            "chosen": chosen,
         }
         if ai_message:
             rewritten, error = self._ai_rewrite(message, lang, result)

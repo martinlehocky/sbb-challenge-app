@@ -16,7 +16,7 @@ from sbb_backend.api import create_app
 from sbb_backend.services.stations import Station
 from sbb_backend.services.stopover import StopIdeas
 
-from .conftest import A, B, D
+from .conftest import A, B, D, X
 
 
 class FakeTogether:
@@ -1221,3 +1221,96 @@ def test_emergency_numbers_only_for_emergencies(client, fake):
     assert any("144" in f for f in _ask(client, "Someone collapsed, help!")["debug"]["facts"])
     fake.chat_answers = [NO_TRIP, {"language": "en", "answer": "No jokes here.", "answered": True}]
     assert not any("144" in f for f in _ask(client, "Tell me a joke")["debug"]["facts"])
+
+
+# ---------------------------------------------------------------- the train the traveller picked on the result screen
+
+def test_advice_with_a_picked_train(client_no_ai):
+    """Tapping another option on the result screen: that train becomes the advice, the best one an option."""
+    base = {"origin": "Alpha", "destination": str(D), "at": "2026-09-10T10:30:00+02:00"}
+    plain = client_no_ai.post("/api/v1/advice", json=base).json()
+    assert plain["next_move"]["departure"][11:16] == "11:00" and plain["chosen"] is False
+    picked = client_no_ai.post("/api/v1/advice", json={**base, "prefer_departure": "11:05"}).json()
+    assert picked["chosen"] is True and picked["next_move"]["departure"][11:16] == "11:05"
+    assert "Take the S2 at 11:05" in picked["message"]
+    assert [a["departure"][11:16] for a in picked["alternatives"]][:2] == ["11:05", "11:00"]
+    later = client_no_ai.post("/api/v1/advice", json={**base, "prefer_departure": "13:00"}).json()
+    assert later["chosen"] is True and later["next_move"]["departure"][11:16] == "13:00"  # beyond the first options
+    unknown = client_no_ai.post("/api/v1/advice", json={**base, "prefer_departure": "11:01"}).json()
+    assert unknown["chosen"] is False and unknown["next_move"]["departure"][11:16] == "11:00"
+
+
+def test_question_about_my_trip_uses_the_picked_train(client, fake):
+    fake.chat_answers = [NO_TRIP, {"language": "en", "answer": "Your S2 leaves at 11:05.", "answered": True}]
+    body = _ask(client, "When does my train leave?", at="2026-09-10T10:30:00+02:00", destination=str(D),
+                chosen_departure="11:05")
+    facts = "\n".join(body["debug"]["facts"])
+    assert "The traveller picked the S2 at 11:05" in facts and body["answer"] == "Your S2 leaves at 11:05."
+    # The timetable safety net also follows the picked train.
+    fake.chat_answers = [NO_TRIP, {"language": "en", "answer": "Not sure.", "answered": False}]
+    body = _ask(client, "When does my train leave?", at="2026-09-10T10:30:00+02:00", destination=str(D),
+                chosen_departure="11:05")
+    assert body["debug"]["safety_net"] and "Take the S2 at 11:05" in body["answer"]
+
+
+def test_coffee_questions_ask_for_cafes():
+    from sbb_backend.services.assistant import places_wanted
+    for q in ("Where can I get a coffee while I wait?", "Wo gibt es einen Kaffee?", "Où boire un café ?",
+              "Dove posso prendere un caffè?", "Is there somewhere for a cup of tea?"):
+        assert places_wanted(q) == ["coffee"], q
+    assert places_wanted("Where can I eat something and get a coffee?") == ["eat"]  # a meal: every place to eat
+    assert places_wanted("Wo kann ich etwas essen?") == ["eat"]
+
+
+def test_coffee_shows_cafes_not_restaurants(settings, fake, google):
+    """Real case: "Where can I get a coffee?" listed Haus Hiltl and a steakhouse (Google tags them "cafe" too)."""
+    cafe = _gplace("Bean Bar", 0.001, ptype="coffee_shop")
+    restaurant = _gplace("Green House", 0.0012, ptype="vegetarian_restaurant")
+    google.places = [restaurant, cafe]
+    app = create_app(replace(settings, together_api_key="test-key", google_maps_api_key="g-key"),
+                     ai_transport=httpx.MockTransport(fake), places_transport=httpx.MockTransport(google))
+    with TestClient(app) as c:
+        fake.chat_answers = [NO_TRIP, {"place": None}, {"language": "en", "answer": "x", "answered": True}]
+        body = c.post("/api/v1/question", json={"question": "Where can I get a coffee while I wait?",
+                                                 "station": str(A), "at": AT}).json()
+    assert [p["name"] for p in body["places"]] == ["Bean Bar"]
+    assert body["answer"].startswith("Here are some cafés in")
+    search = json.loads([q for q in google.requests if q.url.path.endswith("searchNearby")][0].content)
+    assert "restaurant" not in search["includedTypes"] and "coffee_shop" in search["includedTypes"]
+
+
+def test_the_airport_counts_even_if_the_ai_misses_it():
+    from sbb_backend.services.voice import understand_trip
+    from sbb_backend.services.stations import EXONYMS
+    assert EXONYMS["flughafen"] == "Zürich Flughafen" and EXONYMS["airport"] == "Zürich Flughafen"
+
+
+def test_trip_with_a_stop_also_when_asking_about_my_ticket(client, fake):
+    """Real case: in "Ask about my trip" mode, "first Interlaken, then Bern" asked "which one?" instead of how long
+    to stay in Interlaken. Now the route is planned there too, and the stay button continues it."""
+    fake.chat_answers = [{"origin": None, "destinations": ["Delta"], "via": ["Beta"], "language": "en"}, NO_IDEAS,
+                         {"language": "en", "answer": "x", "answered": True}]
+    body = _ask(client, "First Beta, then Delta.", at="2026-09-10T10:30:00+02:00", destination=str(X))
+    assert body["clarify"] is False and body["debug"]["trip_plan"] == "route" and body["route"] is not None
+    assert [v["name"] for v in body["context"]["via"]] == ["Beta"]
+    fake.chat_answers = [NO_TRIP, NO_IDEAS, {"language": "en", "answer": "x", "answered": True}]
+    body = _ask(client, "Stay 1 h", at="2026-09-10T10:30:00+02:00", destination=str(X),
+                context_destination=str(D), context_via=[str(B)], context_stays=[None], stay_minutes=60)
+    assert body["route"]["stays"] == [60] and body["route"]["complete"] is True
+
+
+def test_places_question_while_a_route_is_open(settings, fake, google):
+    """Real case: after "first Interlaken, then Bern", "What can I do in Bern?" said "no information" (it was
+    answered as a route question). Now it shows places in Bern, and the route is kept for the next question."""
+    tower = _gplace("Old Tower", 0.001, ptype="tourist_attraction")
+    tower["location"]["longitude"] = 7.3  # next to Delta
+    google.places = [tower]
+    app = create_app(replace(settings, together_api_key="test-key", google_maps_api_key="g-key"),
+                     ai_transport=httpx.MockTransport(fake), places_transport=httpx.MockTransport(google))
+    with TestClient(app) as c:
+        fake.chat_answers = [NO_TRIP, {"language": "en", "answer": "x", "answered": True}]
+        body = c.post("/api/v1/question", json={"question": "What can I do in Delta?", "station": str(A), "at": AT,
+                                                 "context_destination": str(D), "context_via": [str(B)],
+                                                 "context_stays": [60]}).json()
+    assert [p["name"] for p in body["places"]] == ["Old Tower"] and body["debug"]["trip_plan"] != "route"
+    assert [v["name"] for v in body["context"]["via"]] == ["Beta"] and body["context"]["stays"] == [60]

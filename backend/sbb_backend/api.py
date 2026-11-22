@@ -46,12 +46,13 @@ KIOSK_LANGUAGES = {"en", "de", "fr", "it", "english", "german", "french", "itali
 # would translate the English question (into French, for example), so they are retried in English.
 MISDETECTED_AS = {"cy": "en", "welsh": "en"}
 # Vocabulary hint for speech recognition, so short Swiss names ("Chur", "Thun") are not misheard.
-# Only names, no sentence: an English sentence here makes Whisper translate Italian or French speech into English.
+# Only names and single words, no sentence: an English sentence here makes Whisper translate Italian or French
+# speech into English. A few railway words in all four languages ("platform", "Gleis") are misheard less often.
 STT_PROMPT = (
     "Zürich HB, Bern, Basel SBB, Genève, Lausanne, Luzern, Chur, St. Gallen, Lugano, Bellinzona, Olten, "
     "Winterthur, Biel/Bienne, Fribourg, Neuchâtel, Sion, Brig, Visp, Interlaken Ost, Thun, Spiez, Zug, Aarau, "
     "Baden, Schaffhausen, Rapperswil, Ziegelbrücke, Sargans, Landquart, Wädenswil, Pfäffikon SZ, Morges, Nyon, "
-    "Yverdon-les-Bains, Montreux, Vevey."
+    "Yverdon-les-Bains, Montreux, Vevey. Platform, train, Gleis, Zug, voie, binario, treno."
 )
 
 
@@ -109,6 +110,8 @@ class AdviceRequest(BaseModel):
     lang: Lang = "en"
     alternatives: int = Field(3, ge=1, le=5)
     ai_message: bool = Field(False, description="Also return an AI rewrite of the advice in plain words")
+    prefer_departure: str | None = Field(None, pattern=r"^\d{2}:\d{2}$",
+                                         description="HH:MM of the option the traveller picked; it becomes the advice")
 
 
 class LocationRequest(BaseModel):
@@ -165,6 +168,8 @@ class QuestionRequest(BaseModel):
                                             description="Minutes to stay at each of those stops (null = not said)")
     stay_minutes: int | None = Field(None, ge=5, le=720,
                                      description="A stay the traveller picked with a button (first stop without one)")
+    chosen_departure: str | None = Field(None, pattern=r"^\d{2}:\d{2}$",
+                                         description="HH:MM of the train the traveller picked for their trip")
 
 
 def parse_json_list(raw: str | None, limit: int = 3) -> list:
@@ -326,7 +331,7 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
         t = when(req.at)
         dep = when(req.depart_after) if req.depart_after else None
         return svc().advisor.advise(o, d, t, depart_at=dep, lang=req.lang, count=req.alternatives,
-                                    ai_message=req.ai_message)
+                                    ai_message=req.ai_message, prefer_departure=req.prefer_departure)
 
     # -------------------------------------------------------------- location
 
@@ -419,7 +424,8 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
                         extra_facts: list[str], spoken_lang: str | None = None,
                         history: list[dict] | None = None, context_destination: str | None = None,
                         context_origin: str | None = None, context_via: list | None = None,
-                        context_stays: list | None = None, stay_minutes: int | None = None) -> dict:
+                        context_stays: list | None = None, stay_minutes: int | None = None,
+                        chosen_departure: str | None = None) -> dict:
         s = svc()
         kiosk = station_or_404(station)
         dest = station_or_404(destination) if destination else None
@@ -434,7 +440,7 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
         return s.assistant.answer(question, kiosk, when(at), lang=lang, destination=dest, extra_facts=extra_facts,
                                   spoken_lang=spoken_lang, history=history, context_destination=context,
                                   context_origin=start, context_via=via, context_stays=stays[:len(via)],
-                                  stay_minutes=stay_minutes)
+                                  stay_minutes=stay_minutes, chosen_departure=chosen_departure)
 
     @app.post("/api/v1/question", tags=["assistant"])
     def question(req: QuestionRequest) -> dict:
@@ -448,7 +454,7 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
                                history=[t.model_dump() for t in req.history],
                                context_destination=req.context_destination, context_origin=req.context_origin,
                                context_via=req.context_via, context_stays=req.context_stays,
-                               stay_minutes=req.stay_minutes)
+                               stay_minutes=req.stay_minutes, chosen_departure=req.chosen_departure)
 
     @app.post("/api/v1/question/voice", tags=["assistant"])
     async def question_voice(file: UploadFile = File(...), station: str = Form(...), at: str | None = Form(None),
@@ -459,7 +465,8 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
                              context_origin: str | None = Form(None),
                              context_via: str | None = Form(None, description="JSON list of station ids"),
                              context_stays: str | None = Form(None, description="JSON list of minutes or null"),
-                             stay_minutes: int | None = Form(None, ge=5, le=720)) -> dict:
+                             stay_minutes: int | None = Form(None, ge=5, le=720),
+                             chosen_departure: str | None = Form(None, pattern=r"^\d{2}:\d{2}$")) -> dict:
         """Spoken question: speech to text, then the same as /question."""
         transcript, stt = await transcribe_request(file, station, lang)
         if not transcript:
@@ -476,7 +483,8 @@ def create_app(settings: Settings | None = None, ai_transport: httpx.BaseTranspo
             transcript, station, at, lang, destination, facts, spoken_lang=spoken,
             history=parse_history(history), context_destination=context_destination,
             context_origin=context_origin, context_via=parse_json_list(context_via),
-            context_stays=parse_json_list(context_stays), stay_minutes=stay_minutes))
+            context_stays=parse_json_list(context_stays), stay_minutes=stay_minutes,
+            chosen_departure=chosen_departure))
         out["debug"] = {"speech_to_text": stt, **out.get("debug", {})}
         return out
 

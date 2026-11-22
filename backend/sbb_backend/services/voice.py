@@ -80,6 +80,8 @@ _ORIGIN_WORDS = {"from", "von", "ab", "depuis", "de", "du", "da", "dal", "dalla"
 _ORIGIN_PHRASES = ("i am in", "i m in", "im in", "ich bin in", "je suis a", "sono a", "i am at", "ich bin am")
 # "First Luzern, then Lugano": a stop on the way, not a choice between two places.
 _THEN = re.compile(r"(?<!\w)(then|dann|danach|anschliessend|anschließend|puis|ensuite|poi|dopo|afterwards)(?!\w)", re.I)
+# "The airport" said in the traveller's own words, when the AI found no destination ("Wie komme ich zum Flughafen?").
+_AIRPORT = re.compile(r"(?<!\w)(airport|flughafen|a[ée]roport|aeroporto)(?!\w)", re.I)
 # Station names that are also everyday words; such a station only counts after a word like "to" ("nach Zug"),
 # never in "Wann fährt mein Zug?" (Zug = train).
 _WORD_STATIONS = {"zug": re.compile(r"(?<!\w)(nach|to|in|à|a|für|pour|per|von|from|ab|bis|vers|towards|richtung|"
@@ -171,7 +173,9 @@ def understand_trip(stations: StationIndex, ai: TogetherClient | None, text: str
         try:
             conversation = conversation_text(history)
             system = (
-                "Extract the trip a railway traveller in Switzerland asks for. Station names may be in German, "
+                "Extract the trip a railway traveller in Switzerland asks for. The text may come from speech "
+                "recognition with misheard words (a station name that sounds like a Swiss station is that station). "
+                "Station names may be in German, "
                 "French, Italian or English. Use null or an empty list for anything not said. If the traveller "
                 "names only one place, it is a destination. List every destination they name (for 'Bern or "
                 "Basel', both). Always give the official Swiss station name, not a translation (for example "
@@ -221,6 +225,8 @@ def understand_trip(stations: StationIndex, ai: TogetherClient | None, text: str
                 said_via.insert(0, said_origin)
                 said_origin = ""
             said = _drop_word_stations(text, said)
+            if not said and not said_via and _AIRPORT.search(text):
+                said = ["airport"]  # "airport" -> Zürich Flughafen (stations.EXONYMS)
             if said_origin and not _drop_word_stations(text, [said_origin]):
                 said_origin = ""
             if said_origin and not said and not said_via and not conversation and \

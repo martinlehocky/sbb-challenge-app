@@ -21,6 +21,8 @@ from .stations import Station
 # What Google should look for, per screen. Types from Google's place type table A.
 INTEREST_TYPES = {
     "eat": ["cafe", "coffee_shop", "bakery", "restaurant", "ice_cream_shop"],
+    # "Where can I get a coffee?": cafés only, not every restaurant that also serves coffee.
+    "coffee": ["cafe", "coffee_shop", "bakery", "tea_house"],
     "explore": ["museum", "art_gallery", "park", "tourist_attraction", "church"],
     "rest": ["park", "library", "cafe"],
 }
@@ -30,7 +32,7 @@ STAY_MIN = {
     "steak_house": 35, "diner": 30, "pub": 30, "food_court": 15, "deli": 10,
     "museum": 40, "art_gallery": 30, "park": 15, "tourist_attraction": 15, "church": 10, "library": 20,
 }
-DEFAULT_STAY = {"eat": 15, "explore": 20, "rest": 15}
+DEFAULT_STAY = {"eat": 15, "coffee": 15, "explore": 20, "rest": 15}
 # Never suggested, even when Google also tags them as a restaurant or sight.
 EXCLUDED_PRIMARY = ["hotel", "lodging", "hostel", "gas_station", "supermarket", "grocery_store", "night_club", "bar",
                     "casino", "shopping_mall", "train_station", "transit_station", "bus_station", "parking"]
@@ -40,8 +42,17 @@ FOOD_TYPE_WORDS = ("restaurant", "cafe", "coffee", "bakery", "food", "sandwich",
                    "pizzeria", "bagel", "donut", "chocolate", "juice", "cafeteria", "meal_takeaway", "pub")
 
 
+# For coffee, the main type must be a café or similar: Google also tags restaurants (Haus Hiltl) "cafe".
+COFFEE_TYPE_WORDS = ("cafe", "coffee", "bakery", "tea", "pastry", "patisserie", "confectionery", "dessert",
+                     "chocolate", "cafeteria", "donut", "bagel", "brunch")
+
+
 def is_food_place(primary_type: str | None) -> bool:
     return not primary_type or any(w in primary_type for w in FOOD_TYPE_WORDS)
+
+
+def is_coffee_place(primary_type: str | None) -> bool:
+    return bool(primary_type) and any(w in primary_type for w in COFFEE_TYPE_WORDS)
 MIN_REVIEWS = 30  # below this, a rating says little
 WALK_M_PER_MIN = 70      # unhurried pace (many kiosk users are older)
 DETOUR = 1.3             # streets are longer than the straight line
@@ -74,10 +85,11 @@ def stay_minutes(primary_type: str | None, interest: str) -> int:
     return DEFAULT_STAY[interest]
 
 
-def _score(rating: float | None, count: int | None, walk: int) -> float:
-    """Well rated first, a little preference for close places; few reviews count as an average 3.8."""
+def _score(rating: float | None, count: int | None, walk: int, interest: str = "eat") -> float:
+    """Well rated first, a little preference for close places; few reviews count as an average 3.8.
+    For a quick coffee, being close counts more."""
     r = rating if rating is not None and (count or 0) >= MIN_REVIEWS else 3.8
-    return r - 0.05 * walk
+    return r - (0.12 if interest == "coffee" else 0.05) * walk
 
 
 def open_at(hours: dict | None, when: datetime) -> bool | None:
@@ -183,6 +195,9 @@ class PlacesService:
             if interest == "eat" and not is_food_place(p.get("primaryType")):
                 debug["dropped"].append(f"{name}: a {p.get('primaryType')}, not a place to eat")
                 continue
+            if interest == "coffee" and not is_coffee_place(p.get("primaryType")):
+                debug["dropped"].append(f"{name}: a {p.get('primaryType')}, not a café")
+                continue
             if p.get("businessStatus") not in (None, "OPERATIONAL"):
                 debug["dropped"].append(f"{name}: {p.get('businessStatus')}")
                 continue
@@ -203,7 +218,7 @@ class PlacesService:
                 debug["dropped"].append(f"{name}: no photo")
                 continue
             out.append({"p": p, "name": name, "walk": walk, "stay": stay, "open": is_open,
-                        "score": _score(p.get("rating"), p.get("userRatingCount"), walk)})
+                        "score": _score(p.get("rating"), p.get("userRatingCount"), walk, interest)})
         out.sort(key=lambda c: -c["score"])
         debug["fitting"] = len(out)
         out = out[:limit]

@@ -12,6 +12,7 @@ import time
 from datetime import datetime
 
 from ..ai import AIError, TogetherClient
+from ..textutil import normalize
 from ..timeutil import ZURICH, to_iso
 from .advisor import Advisor
 from .disruptions import DisruptionStore
@@ -205,13 +206,22 @@ def _disruption_lines(d: dict, label: str) -> list[str]:
 _EAT_WORDS = ("eat", "food", "lunch", "dinner", "breakfast", "restaurant", "café", "cafe", "coffee", "hungry", "snack",
               "essen", "mittag", "frühstück", "kaffee", "hunger", "manger", "repas", "déjeuner", "dîner",
               "mangiare", "pranzo", "cena", "colazione", "fame", "ristorant")
-_SEE_WORDS = ("i do", "we do", "to do", "things", "stuff", "see", "visit", "recommend", "interesting", "sight",
+# "What can I do in Bern?" asks for places; "What do I do now?" / "What should I do?" (train cancelled) does not.
+_SEE_WORDS = ("can i do", "could i do", "can we do", "could we do", "things to do", "something to do", "stuff to do",
+              "to do in", "to do while", "to do near", "to do around", "to do here", "things", "stuff", "see",
+              "visit", "recommend", "interesting", "sight",
               "museum", "tip", "suggest", "idea", "explore", "tour",
               "tun", "unternehmen", "sehen", "besuchen", "besichtig", "empfehl", "sehenswürd", "interessant",
               "ausflug", "vorschl", "idee", "anschauen", "machen", "unternehm",
               "faire", "voir", "visiter", "recommand", "intéressant", "musée", "conseil", "suggér", "idée",
               "cosa fare", "da fare", "vedere", "visitare", "consigl", "museo", "attrazion", "suggeri")
 _EAT_RE = re.compile(r"(?<![\w])(" + "|".join(re.escape(w) for w in _EAT_WORDS) + ")", re.IGNORECASE)
+# Coffee (or tea) only, without a meal: cafés rather than every place to eat.
+_COFFEE_WORDS = ("coffee", "café", "cafe", "cafes", "cafés", "kaffee", "kafi", "espresso", "cappuccino", "latte",
+                 "tea", "tee", "thé", "caffè", "caffe", "caffé", "cappuccino")
+_MEAL_WORDS = tuple(w for w in _EAT_WORDS if w not in _COFFEE_WORDS)
+_COFFEE_RE = re.compile(r"(?<![\w])(" + "|".join(re.escape(w) for w in _COFFEE_WORDS) + r")(?![\w])", re.IGNORECASE)
+_MEAL_RE = re.compile(r"(?<![\w])(" + "|".join(re.escape(w) for w in _MEAL_WORDS) + ")", re.IGNORECASE)
 _SEE_RE = re.compile(r"(?<![\w])(" + "|".join(re.escape(w) for w in _SEE_WORDS) + ")", re.IGNORECASE)
 MAX_PLACE_FACTS = 5
 # When the AI gives no usable answer but there are places to show, this introduces the list instead of
@@ -222,6 +232,12 @@ PLACES_INTRO = {
         "de": "Hier einige Empfehlungen in {town}:",
         "fr": "Voici quelques recommandations à {town}\u00a0:",
         "it": "Ecco alcuni consigli a {town}:",
+    },
+    "coffee": {
+        "en": "Here are some cafés in {town}:",
+        "de": "Hier einige Cafés in {town}:",
+        "fr": "Voici quelques cafés à {town}\u00a0:",
+        "it": "Ecco alcuni caffè a {town}:",
     },
     "eat": {
         "en": "Here are some places to eat in {town}:",
@@ -239,9 +255,11 @@ PLACE_SCHEMA = {
 
 
 def places_wanted(question: str) -> list[str]:
-    """Which kinds of places a question asks for: ['eat'], ['explore'], both, or none."""
+    """Which kinds of places a question asks for: ['coffee'] (cafés only), ['eat'], ['explore'], a mix, or none."""
     kinds = []
-    if _EAT_RE.search(question):
+    if _COFFEE_RE.search(question) and not _MEAL_RE.search(question):
+        kinds.append("coffee")
+    elif _EAT_RE.search(question):
         kinds.append("eat")
     if _SEE_RE.search(question):
         kinds.append("explore")
@@ -354,7 +372,7 @@ class Assistant:
                spoken_lang: str | None = None, history: list[dict] | None = None,
                context_destination: Station | None = None, context_origin: Station | None = None,
                context_via: list[Station] | None = None, context_stays: list[int | None] | None = None,
-               stay_minutes: int | None = None) -> dict:
+               stay_minutes: int | None = None, chosen_departure: str | None = None) -> dict:
         """Answer a traveller's question from facts only, in the language of the question.
 
         `lang` = the kiosk screen language (used when the question's language is unclear),
@@ -366,6 +384,8 @@ class Assistant:
         Trips with stops on the way ("first Interlaken, then Bern"): `context_via` / `context_stays` = the stops
         and the minutes to stay at each (None = not said yet) from the previous answer's `context`;
         `stay_minutes` = a stay the traveller picked with a button (applies to the first stop without one).
+        `chosen_departure` ("HH:MM") = the train the traveller picked on the result screen for their trip
+        (`destination`); "my train" then means that one.
         The answer then has a `route` (every part planned, each leaving after the stay) and asks how long to
         stay where that is still unknown, with ideas of what to do there.
         """
@@ -413,7 +433,12 @@ class Assistant:
                 result.update(answer=SEVERAL_PLACES[lang], clarify=True, choices=[st.to_dict() for st in offered])
                 debug["asked_again"] = True
                 return result
-        if destination is None:
+        # A trip with stops ("first Interlaken, then Bern"), also when asking about the ticket's trip: then the
+        # stops come from the question (or from the route discussed so far), not from the ticket.
+        # "What can I do in Bern?" while a route is open asks for places (below), not about the route; the route
+        # is kept for the next question.
+        asks_places = bool(places_wanted(question)) and not intent.get("via") and stay_minutes is None
+        if (destination is None or intent.get("via") or context_via) and not asks_places:
             wanted = self._route_request(intent, kiosk, at, context_destination, context_origin,
                                          context_via or [], context_stays or [], clean_stay(stay_minutes))
             if wanted is not None:
@@ -442,6 +467,7 @@ class Assistant:
                                                        "how": hit["how"]}]}
                 debug["places_follow_up"] = {"station": hit["station"].name, "place": asked[1]}
         plan = self._trip_plan(intent, kiosk, destination or remembered)
+        plan["said_names"] = [d.get("said") for d in intent.get("destinations") or [] if d.get("said")]
         if follow_up is not None:
             station, place = follow_up
             if place is None and station.id == kiosk.id:
@@ -498,11 +524,22 @@ class Assistant:
         facts += plan["facts"]
         origin, dest = plan["origin"], plan["destination"]
         advice = None
+        # The train the traveller picked on the result screen, for their own trip only.
+        prefer = chosen_departure if destination is not None and dest is not None and dest.id == destination.id \
+            and origin.id == kiosk.id else None
         if dest is not None and origin.id != dest.id:
             try:
                 advice = self.advisor.advise(origin, dest, at, lang=lang, count=3,
-                                             catch_from=at + CATCH_LEAD_S if origin.id == kiosk.id else None)
+                                             catch_from=at + CATCH_LEAD_S if origin.id == kiosk.id else None,
+                                             prefer_departure=prefer)
                 facts += advice_facts(advice)
+                if advice.get("chosen"):
+                    move = advice.get("next_move") or {}
+                    facts.append(
+                        f"The traveller picked the {move.get('train')} at {(move.get('departure') or '')[11:16]} on the "
+                        "kiosk (listed above as 'Best connection now'): 'my train' means this train. The other "
+                        "connections are other options.")
+                    debug["chosen_departure"] = prefer
             except Exception as exc:  # noqa: BLE001 - a failed plan must not break the answer
                 debug["advice_error"] = str(exc)
                 facts.append(f"No connection from {origin.name} to {dest.name} could be found.")
@@ -536,16 +573,29 @@ class Assistant:
         elsewhere = where is not None and where.id != kiosk.id and (debug.get("place_facts") or {}).get("count")
         result = self._ai_answer(facts, question, kiosk, at, lang, screen_lang, history,
                                  None if elsewhere else extra_facts, result)
-        self._trip_safety_net(result, question, plan, advice, follow_up, lang, debug, at, kiosk)
+        self._trip_safety_net(result, question, plan, advice, follow_up, lang, debug, at, kiosk, prefer)
         # The list of places (with photos) is the answer: a short intro instead of the AI repeating the list, or
         # of "please ask staff". Only an answer that also gives train times ("…and when does my train leave?") stays.
-        if result["places"] and not (result["answered"] and _times(result["answer"] or "")):
+        asks_when = bool(re.search(r"(?<!\w)(when|wann|quand|quando|what time|um wie viel|à quelle heure|a che ora)"
+                                   r"(?!\w)", question, re.I))
+        if result["places"] and not (result["answered"] and asks_when and _times(result["answer"] or "")):
             info = debug.get("place_facts") or {}
-            kind = "eat" if all(p["kind"] == "eat" for p in result["places"]) else "explore"
+            shown_kinds = {p["kind"] for p in result["places"]}
+            kind = "coffee" if shown_kinds == {"coffee"} else "eat" if shown_kinds <= {"eat", "coffee"} else "explore"
             answer_lang = result.get("answer_lang") if result.get("answer_lang") in LANG_NAMES else lang
             result["answer"] = PLACES_INTRO[kind][answer_lang].format(town=info.get("town") or kiosk.name)
             result["answered"] = True
             debug["places_intro"] = True
+        if asks_places and context_via and context_destination is not None:
+            # Keep the open route ("first Interlaken, then Bern") for the next question.
+            result["context"] = {
+                "origin": context_origin.to_dict() if context_origin is not None and context_origin.id != kiosk.id
+                else None,
+                "destination": context_destination.to_dict(),
+                "via": [v.to_dict() for v in context_via],
+                "stays": list(context_stays or [None] * len(context_via))[:len(context_via)],
+            }
+            debug["route_kept"] = True
         return result
 
     @staticmethod
@@ -565,7 +615,7 @@ class Assistant:
         return text
 
     def _trip_safety_net(self, result: dict, question: str, plan: dict, advice: dict | None, follow_up,
-                         lang: str, debug: dict, at: int, kiosk: Station) -> None:
+                         lang: str, debug: dict, at: int, kiosk: Station, prefer: str | None = None) -> None:
         """The timetable's own sentence (correct by construction) when the AI got a trip question wrong or gave up.
 
         - A new trip ("Wann fährt der nächste Zug nach Bern?") whose answer lacks the departure time: the AI may
@@ -586,7 +636,11 @@ class Assistant:
         dep = (move.get("departure") or "")[11:16]
         answer = result.get("answer") or ""
         trip_question = bool(_TRIP_QUESTION.search(question)) or follow_up is not None
-        named_trip = plan["kind"] in ("trip", "elsewhere") or follow_up is not None
+        # A trip the question itself names ("…to Bern?"), not one the trip step took from the chat ("Which platform?").
+        named_here = plan["destination"] is not None and any(
+            normalize(n) in normalize(question)
+            for n in (plan["destination"].name, plan["destination"].name.split()[0], *(plan.get("said_names") or [])))
+        named_trip = (plan["kind"] in ("trip", "elsewhere") and named_here) or follow_up is not None
         asks_departure = bool(_DEPARTURE_QUESTION.search(question))
         alts = advice.get("alternatives") or []
         arr = (alts[0].get("arrival") or "")[11:16] if alts else ""
@@ -601,7 +655,8 @@ class Assistant:
             if message is None:  # the answer language differs from the one the advice was written in
                 o, d = plan["origin"], plan["destination"]
                 message = self.advisor.advise(o, d, at, lang=out_lang, count=1,
-                                              catch_from=at + CATCH_LEAD_S if o.id == kiosk.id else None).get("message")
+                                              catch_from=at + CATCH_LEAD_S if o.id == kiosk.id else None,
+                                              prefer_departure=prefer).get("message")
             result.update(answer=message, answered=True)
             debug["safety_net"] = "missing departure" if wrong else "AI gave up"
 
@@ -654,7 +709,7 @@ class Assistant:
             except Exception as exc:  # noqa: BLE001 - places are extra; never break the answer
                 debug.setdefault("places_error", str(exc))
                 continue
-            label = "Place to eat or drink" if kind == "eat" else "Place to visit"
+            label = {"eat": "Place to eat or drink", "coffee": "Café"}.get(kind, "Place to visit")
             for p in found:
                 rating = f", rated {p['rating']} ({p['rating_count']} reviews)" if p.get("rating") else ""
                 kind_label = f" ({p['type_label']})" if p.get("type_label") else ""
@@ -698,7 +753,11 @@ class Assistant:
             f"You are the friendly help desk of a Swiss railway station kiosk at {kiosk.name}. Many travellers are "
             "stressed or elderly. Answer in the language the QUESTION is written in (English, German, French or "
             f"Italian), whatever the language of the facts; if that is unclear, answer in {LANG_NAMES[screen_lang]}. "
-            "Set language to that language. Use at most 4 short, plain sentences, and answer exactly what was asked "
+            "Set language to that language. The QUESTION is often spoken and written down by speech recognition, so "
+            "it can contain misheard words ('the train game from' = 'the train going from', 'leaf' = 'leave', "
+            "'Bärn' = 'Bern'): read it as the most likely question a traveller at a railway station would ask, and "
+            "answer that; only say you do not understand if no sensible railway or travel meaning fits. "
+            "Use at most 4 short, plain sentences, and answer exactly what was asked "
             "(asked when they arrive: give the arrival time). "
             "STRICT: every time, platform, train name, delay and connection comes ONLY from the FACTS, copied exactly; "
             "never give a time or platform that is not in the FACTS, and never give prices. For a trip, give the train, "
